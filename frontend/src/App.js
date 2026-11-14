@@ -4,7 +4,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import Home from './pages/Home';
+import Home from './pages/LabHome';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import Login from './pages/Login';

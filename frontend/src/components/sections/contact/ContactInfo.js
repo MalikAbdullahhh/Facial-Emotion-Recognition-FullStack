@@ -1,33 +1,28 @@
 import React from 'react';
-import { FiMail, FiPhone, FiMapPin, FiClock } from 'react-icons/fi';
+import { FiMail, FiMapPin, FiClock } from 'react-icons/fi';
 import ScrollAnimation from '../../ScrollAnimation';
 import './ContactInfo.css';
 
 const ContactInfo = () => {
+  // Only real, working channels — no placeholder phone numbers or addresses.
   const contactMethods = [
     {
       icon: <FiMail />,
-      title: 'Email',
-      info: 'contact@fer.com',
-      link: 'mailto:contact@fer.com'
-    },
-    {
-      icon: <FiPhone />,
-      title: 'Phone',
-      info: '+1 (555) 123-4567',
-      link: 'tel:+15551234567'
-    },
-    {
-      icon: <FiMapPin />,
-      title: 'Address',
-      info: '123 Tech Street, City, Country',
-      link: '#'
+      title: 'Message us',
+      info: 'Use the form below — it reaches the team directly',
+      link: '#contact-form'
     },
     {
       icon: <FiClock />,
-      title: 'Hours',
-      info: 'Mon - Fri: 9AM - 6PM',
-      link: '#'
+      title: 'Response time',
+      info: 'Usually within 2 working days',
+      link: '#contact-form'
+    },
+    {
+      icon: <FiMapPin />,
+      title: 'Where we work',
+      info: 'Remote team · Lahore, Pakistan',
+      link: '#contact-form'
     }
   ];
 

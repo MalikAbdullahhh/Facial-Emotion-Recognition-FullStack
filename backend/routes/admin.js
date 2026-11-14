@@ -60,7 +60,7 @@ router.get('/stats', async (req, res) => {
 // @desc    Get all users with full details including passwords
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().select('+password +plaintextPassword').sort({ createdAt: -1 }).lean();
+    const users = await User.find().select('-password -plaintextPassword').sort({ createdAt: -1 }).lean();
     
     // Format user data with time calculations
     const formattedUsers = users.map(user => {
@@ -78,7 +78,6 @@ router.get('/users', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        password: user.plaintextPassword || user.password, // Plaintext password if available, else hashed
         hashedPassword: user.password, // Always include hashed version
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
@@ -169,7 +168,7 @@ router.get('/newsletters', async (req, res) => {
 // @desc    Get detailed user information
 router.get('/users/:id', async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('+password +plaintextPassword').lean();
+    const user = await User.findById(req.params.id).select('-password -plaintextPassword').lean();
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -191,7 +190,6 @@ router.get('/users/:id', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        password: user.plaintextPassword || user.password, // Plaintext password if available, else hashed
         hashedPassword: user.password, // Always include hashed version
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,

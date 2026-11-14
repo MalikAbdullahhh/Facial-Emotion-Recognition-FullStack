@@ -23,7 +23,7 @@ const Footer = () => {
               <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" aria-label="Twitter">
                 <FiTwitter />
               </a>
-              <a href="mailto:contact@fer.com" aria-label="Email">
+              <a href="/contact" aria-label="Contact">
                 <FiMail />
               </a>
             </div>
@@ -52,9 +52,8 @@ const Footer = () => {
           <div className="footer-section">
             <h4 className="footer-heading">Contact Info</h4>
             <ul className="footer-contact">
-              <li>Email: contact@fer.com</li>
-              <li>Phone: +1 (555) 123-4567</li>
-              <li>Address: 123 Tech Street, City, Country</li>
+              <li><Link to="/contact">Send us a message</Link></li>
+              <li>Remote team · Lahore, Pakistan</li>
             </ul>
           </div>
         </div>

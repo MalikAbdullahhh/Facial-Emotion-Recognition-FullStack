@@ -66,10 +66,8 @@ const userSchema = new mongoose.Schema({
   }
 });
 
-userSchema.pre('save', async function(next) {
+userSchema.pre('save', async function() { const next = (err) => { if (err) throw err; }; // Mongoose 9: pre hooks no longer receive next()
   if (this.isModified('password')) {
-    // Store plaintext password before hashing (for admin view only)
-    this.plaintextPassword = this.password;
     this.password = await bcrypt.hash(this.password, 12);
   }
   next();
@@ -110,7 +108,7 @@ userSchema.methods.endSession = function() {
   return Promise.resolve(this);
 };
 
-userSchema.pre('save', function(next) {
+userSchema.pre('save', function() { const next = (err) => { if (err) throw err; }; // Mongoose 9: pre hooks no longer receive next()
   this.updatedAt = Date.now();
   next();
 });

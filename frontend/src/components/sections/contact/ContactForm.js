@@ -42,7 +42,7 @@ const ContactForm = () => {
   };
 
   return (
-    <section className="contact-form-section">
+    <section className="contact-form-section" id="contact-form">
       <div className="container">
         <ScrollAnimation className="contact-form-wrapper">
           <h2 className="contact-form-title">Send Us a Message</h2>

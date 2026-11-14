@@ -37,14 +37,11 @@ router.post('/recognize', protect, async (req, res) => {
         all_emotions: pythonData.all_emotions || {}
       });
     } catch (pythonError) {
-      // Fallback if Python API is not available
+      // No model server configured: report it honestly (detection runs in the browser now).
       console.error('Python API error:', pythonError);
-      const emotions = ['happy', 'sad', 'angry', 'surprised', 'neutral', 'fear', 'disgust'];
-      res.json({
-        success: true,
-        emotion: emotions[Math.floor(Math.random() * emotions.length)],
-        confidence: (Math.random() * 0.2 + 0.8).toFixed(2),
-        message: 'Using fallback (Python API not available)'
+      res.status(503).json({
+        success: false,
+        message: 'Server-side emotion model is not available. Detection runs in the browser.'
       });
     }
   } catch (error) {

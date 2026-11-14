@@ -53,7 +53,7 @@ const EmotionDetection = () => {
         setApiStatus('ready');
       } else {
         setApiStatus('error');
-        setError('Python API is not available. Please make sure the Flask server is running on port 8000.');
+        setError('The emotion model could not be loaded. Check your connection and refresh the page.');
       }
     });
 

@@ -13,8 +13,9 @@ const app = express();
 app.use(cors({
   origin: [
     'https://checkmyemotion.vercel.app',
-    'http://localhost:3000'
-  ],
+    'http://localhost:3000',
+    process.env.CLIENT_URL,
+  ].filter(Boolean),
   credentials: true,
 }));
 app.options('*', cors());
