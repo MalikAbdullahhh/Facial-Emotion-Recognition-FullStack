@@ -1,22 +1,24 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { FiArrowRight, FiArrowUpRight } from 'react-icons/fi';
 import { useDocTitle } from '../lib/hooks';
-import { Reveal } from '../components/ui';
+import { EASE, Magnetic, SplitReveal } from '../components/fx';
+import PointFace from '../components/fx/PointFace';
 import abdullah from '../assets/team/abdullah.jpg';
-import farhan from '../assets/team/farhan.jpg';
+import './Home.css';
 import './Pages.css';
 
 const PRINCIPLES = [
-  ['Private by default', 'If a feature needs a face to leave the device, we don’t build it. Inference happens in the browser, full stop.'],
-  ['Honest about limits', 'Expressions are signals, not feelings. We show probabilities, not verdicts, and say so wherever results appear.'],
-  ['Fast enough to feel live', 'Small models, careful frame budgets and no network round-trips keep readings at around three per second on a mid-range phone.'],
+  ['Private by default', 'If a feature needs a face to leave the device, it doesn’t get built. Inference happens in the browser, full stop.'],
+  ['Honest about limits', 'Expressions are signals, not feelings. FER shows probabilities, not verdicts — and says so wherever results appear.'],
+  ['Fast enough to feel live', 'Small models, careful frame budgets and no network round-trips keep readings at about three per second on a mid-range phone.'],
 ];
 
 const TIMELINE = [
-  ['Prototype', 'A MobileNetV2 classifier fine-tuned on AffectNet, served from a Python API. Accurate, but every frame had to travel to a server.'],
-  ['Rethink', 'We moved detection into the browser with TensorFlow.js — a tiny face detector plus an expression network, about 0.5 MB in total.'],
-  ['Today', 'A full web app: live sessions, photo analysis, history and reports — with only labels and scores ever stored.'],
+  ['Prototype', 'A MobileNetV2 classifier fine-tuned on AffectNet, served from a Python API. Accurate — but every frame had to travel to a server.'],
+  ['Rethink', 'Detection moved into the browser with TensorFlow.js: a tiny face detector plus an expression network, about 0.5 MB in total.'],
+  ['Today', 'A full product: live sessions, photo batches, history and reports — with only labels and scores ever stored.'],
 ];
 
 const STACK = [
@@ -27,90 +29,77 @@ const STACK = [
   ['Hosting', 'Cloudflare Workers'],
 ];
 
-const TEAM = [
-  { name: 'Malik Abdullah', role: 'Machine learning & engineering', img: abdullah, bio: 'Trained the original classifier, designed the on-device pipeline and built the API.', link: 'https://abdullah-malik-portfolio.malikabdullah0120.workers.dev', pos: '50% 30%' },
-  { name: 'Malik M. Farhan', role: 'Full-stack development & design', img: farhan, bio: 'Built the web app, the dashboards and the reporting flow, and shaped the product experience.', pos: '50% 25%' },
-];
-
 export default function About() {
   useDocTitle('About');
   return (
-    <div className="page">
-      <section className="page-hero">
-        <div className="container page-hero__grid">
-          <Reveal>
-            <p className="kicker">About FER</p>
-            <h1>A small lab project with one firm rule: faces stay on the device.</h1>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <p className="lead">FER started as a university research project on facial expression recognition. Along the way we decided the most useful thing we could build wasn’t a more accurate model — it was one people could trust with their camera.</p>
-          </Reveal>
+    <div className="home page">
+      <section className="about-hero" data-nav-dark>
+        <div className="about-hero__face" aria-hidden="true"><PointFace labels={false} zoom={0.9} /></div>
+        <div className="container about-hero__inner">
+          <motion.p className="label label--dark" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>About FER</motion.p>
+          <SplitReveal as="h1" className="about-hero__title" text="A lab project with one firm rule: faces stay on the device." muted={[0, 1, 2]} delay={0.2} />
+          <motion.p className="about-hero__lead" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, ease: EASE, delay: 0.7 }}>
+            FER began as research into facial expression recognition. Along the way it became clear the most useful thing to build wasn’t a more accurate model — it was one people could trust with their camera.
+          </motion.p>
         </div>
       </section>
 
-      <section className="section page-sec">
+      <section className="section-tight">
         <div className="container">
-          <Reveal className="section-head"><p className="kicker">Principles</p><h2>What we hold ourselves to.</h2></Reveal>
-          <div className="principles">
+          <p className="label">Principles</p>
+          <SplitReveal className="h-xl" text="What FER holds itself to." muted={[0, 1]} />
+          <div className="principles" style={{ marginTop: 40 }}>
             {PRINCIPLES.map(([t, d], i) => (
-              <Reveal key={t} delay={i * 0.07} className="principle">
-                <span className="num faint">{String(i + 1).padStart(2, '0')}</span>
+              <motion.div key={t} className="principle" initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8, ease: EASE, delay: i * 0.08 }}>
+                <span className="num faint">0{i + 1}</span>
                 <h3>{t}</h3>
                 <p>{d}</p>
-              </Reveal>
+              </motion.div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="section section--sunk page-sec">
-        <div className="container split">
-          <Reveal>
-            <p className="kicker">How we got here</p>
-            <h2 className="split__title">From a server model to an in-browser one.</h2>
+      <section className="section-tight how" style={{ height: 'auto' }}>
+        <div className="container split-2">
+          <div>
+            <p className="label">How it got here</p>
+            <SplitReveal className="h-xl" text="From a server model to an in-browser one." muted={[4, 5, 6, 7]} />
             <ol className="timeline">
-              {TIMELINE.map(([t, d]) => (
-                <li key={t}><h3>{t}</h3><p>{d}</p></li>
+              {TIMELINE.map(([t, d], i) => (
+                <motion.li key={t} initial={{ opacity: 0, x: -14 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.7, ease: EASE, delay: i * 0.1 }}><h3>{t}</h3><p>{d}</p></motion.li>
               ))}
             </ol>
-          </Reveal>
-          <Reveal delay={0.1} className="card card-pad stack">
+          </div>
+          <motion.div className="card card-pad stack" initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.8, ease: EASE }}>
             <h3>Under the hood</h3>
-            <dl>
-              {STACK.map(([k, v]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}
-            </dl>
+            <dl>{STACK.map(([k, v]) => (<div key={k}><dt>{k}</dt><dd>{v}</dd></div>))}</dl>
             <p className="hint">Models are cached by your browser after the first visit, so later sessions start instantly — even on a slow connection.</p>
-          </Reveal>
+          </motion.div>
         </div>
       </section>
 
-      <section className="section page-sec" id="team">
-        <div className="container">
-          <Reveal className="section-head"><p className="kicker">Team</p><h2>Two people, one shared obsession with detail.</h2></Reveal>
-          <div className="team">
-            {TEAM.map((m, i) => (
-              <Reveal key={m.name} delay={i * 0.08} className="member">
-                <div className="member__img"><img src={m.img} alt={m.name} loading="lazy" style={{ objectPosition: m.pos }} /></div>
-                <div className="member__body">
-                  <div>
-                    <h3>{m.name}</h3>
-                    <p className="member__role">{m.role}</p>
-                  </div>
-                  <p>{m.bio}</p>
-                  {m.link && <a href={m.link} target="_blank" rel="noopener noreferrer" className="link">Portfolio <FiArrowUpRight style={{ display: 'inline', verticalAlign: '-2px' }} /></a>}
-                </div>
-              </Reveal>
-            ))}
+      <section className="section-tight" id="team">
+        <div className="container founder">
+          <motion.div className="founder__img" initial={{ clipPath: 'inset(12% 12% 12% 12% round 28px)', opacity: 0.4 }} whileInView={{ clipPath: 'inset(0% 0% 0% 0% round 28px)', opacity: 1 }} viewport={{ once: true, margin: '0px 0px -15% 0px' }} transition={{ duration: 1.2, ease: EASE }}>
+            <img src={abdullah} alt="Malik Abdullah" loading="lazy" />
+          </motion.div>
+          <div className="founder__body">
+            <p className="label">Built by</p>
+            <SplitReveal className="h-xl" text="Malik Abdullah" />
+            <p className="founder__role">Machine learning, engineering & design</p>
+            <p className="founder__bio">Malik trained the original expression classifier, designed the on-device pipeline, and built FER end to end — the model integration, the API, the dashboards and the reporting flow.</p>
+            <Magnetic strength={0.25}>
+              <a href="https://abdullah-malik-portfolio.malikabdullah0120.workers.dev" target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-lg">View portfolio <FiArrowUpRight /></a>
+            </Magnetic>
           </div>
         </div>
       </section>
 
-      <section className="section page-sec page-sec--last">
-        <div className="container">
-          <Reveal className="band">
-            <h2>Questions, collaborations or a bug to report?</h2>
-            <Link to="/contact" className="btn btn-primary btn-lg">Get in touch <FiArrowRight /></Link>
-          </Reveal>
+      <section className="closing closing--compact" data-nav-dark>
+        <div className="container closing__row" style={{ marginTop: 0, borderTop: 0, paddingTop: 0 }}>
+          <SplitReveal className="h-xl" text="Questions, collaborations or a bug to report?" />
+          <Magnetic><Link to="/contact" className="btn btn-lg hero__cta-main">Get in touch <FiArrowRight /></Link></Magnetic>
         </div>
       </section>
     </div>

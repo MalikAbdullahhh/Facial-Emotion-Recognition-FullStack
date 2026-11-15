@@ -62,3 +62,6 @@
 .thumb:hover img { transform: scale(1.05); }
 .thumb span { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; justify-content: space-between; gap: 4px; padding: 5px 8px; border-radius: 8px; background: rgba(13, 14, 16, 0.72); backdrop-filter: blur(6px); color: #fff; font-size: 0.72rem; font-weight: 600; border-left: 3px solid var(--c); }
 .thumb b { font-weight: 500; opacity: 0.8; }
+.chart--skeleton { display: flex; align-items: flex-end; gap: 14px; padding: 8px 12px 24px 44px; }
+.chart--skeleton span { flex: 1; border-radius: 8px 8px 4px 4px; }
+.sk-list { display: grid; gap: 10px; }

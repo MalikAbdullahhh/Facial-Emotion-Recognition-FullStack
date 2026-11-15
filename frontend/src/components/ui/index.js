@@ -7,15 +7,25 @@ import { EMOTIONS, emotionMeta, topEmotion } from '../../lib/emotions';
 
 export const EASE = [0.22, 1, 0.36, 1];
 
-/** Logomark: a viewfinder with a face of three landmarks. */
-export function LogoMark({ size = 28, className = '' }) {
+/** Logomark: a face whose smile is drawn in the seven expression colours. */
+const SMILE = [
+  'M8.95 19.45A7.6 7.6 0 0 0 10.00 21.26',
+  'M10.35 21.69A7.6 7.6 0 0 0 11.96 23.04',
+  'M12.44 23.31A7.6 7.6 0 0 0 14.41 24.03',
+  'M14.95 24.13A7.6 7.6 0 0 0 17.05 24.13',
+  'M17.59 24.03A7.6 7.6 0 0 0 19.56 23.31',
+  'M20.04 23.04A7.6 7.6 0 0 0 21.65 21.69',
+  'M22.00 21.26A7.6 7.6 0 0 0 23.05 19.45',
+];
+const SMILE_COLORS = ['var(--e-happy)', 'var(--e-neutral)', 'var(--e-surprised)', 'var(--e-sad)', 'var(--e-angry)', 'var(--e-fear)', 'var(--e-disgust)'];
+
+export function LogoMark({ size = 30, className = '', animate = false }) {
   return (
-    <svg className={className} width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <rect width="32" height="32" rx="9" fill="var(--ink)" />
-      <path d="M8 12V10a2 2 0 0 1 2-2h2M20 8h2a2 2 0 0 1 2 2v2M24 20v2a2 2 0 0 1-2 2h-2M12 24h-2a2 2 0 0 1-2-2v-2" stroke="var(--bg)" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="12.8" cy="14" r="1.6" fill="var(--bg)" />
-      <circle cx="19.2" cy="14" r="1.6" fill="var(--bg)" />
-      <path d="M12.6 18.6c1.9 1.7 4.9 1.7 6.8 0" stroke="var(--signal)" strokeWidth="1.9" strokeLinecap="round" />
+    <svg className={`logo-mark ${animate ? 'is-animated' : ''} ${className}`} width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <rect width="32" height="32" rx="9" fill="#0d0e10" />
+      <rect className="logo-eye" x="10.3" y="9.6" width="2.6" height="5" rx="1.3" fill="#f4f3ef" />
+      <rect className="logo-eye" x="19.1" y="9.6" width="2.6" height="5" rx="1.3" fill="#f4f3ef" />
+      {SMILE.map((d, i) => <path key={d} d={d} stroke={SMILE_COLORS[i]} strokeWidth="2.6" style={{ '--i': i }} className="logo-seg" />)}
     </svg>
   );
 }

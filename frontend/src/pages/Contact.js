@@ -5,6 +5,7 @@ import api from '../utils/api';
 import { apiError } from '../lib/auth';
 import { useDocTitle } from '../lib/hooks';
 import { EASE, Reveal } from '../components/ui';
+import { SplitReveal } from '../components/fx';
 import './Pages.css';
 
 const TOPICS = ['General question', 'Bug report', 'Research collaboration', 'Accessibility', 'Privacy'];
@@ -62,8 +63,8 @@ export default function Contact() {
         <div className="container">
           <Reveal>
             <p className="kicker">Contact</p>
-            <h1>Talk to the people who built it.</h1>
-            <p className="lead page-hero__lead">Questions, bugs, research ideas — we read every message and usually reply within two working days.</p>
+            <SplitReveal as="h1" text="Talk to the person who built it." muted={[0, 1]} />
+            <p className="lead page-hero__lead">Questions, bugs, research ideas — every message gets read, and replies usually go out within two working days.</p>
           </Reveal>
         </div>
       </section>

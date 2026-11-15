@@ -95,7 +95,7 @@ function LiveMode() {
           {!live && (
             <div className="stage__idle">
               {cam.status === 'starting' ? (
-                <><span className="spinner" /><p>Starting camera and loading the model…</p></>
+                <><span className="demo__scan-line" /><p>Waking the camera and loading the model…</p></>
               ) : ended ? (
                 <>
                   <span className="stage__icon"><FiCheck /></span>
@@ -278,7 +278,7 @@ function PhotoMode() {
               <div className="viewer__img" style={current.result?.frame ? { aspectRatio: `${current.result.frame.w} / ${current.result.frame.h}`, width: `min(100%, calc(62vh * ${current.result.frame.w / current.result.frame.h}))` } : undefined}>
                 <img src={current.src} alt={current.name} />
                 {current.result && <FaceBox box={current.result.box} frame={current.result.frame} emotion={current.result.emotion} confidence={current.result.confidence} />}
-                {current.status === 'busy' && <div className="stage__toast"><span className="spinner" />Analysing on your device…</div>}
+                {current.status === 'busy' && <div className="stage__scan"><span className="demo__scan-line" /><span className="stage__toast">Analysing on your device…</span></div>}
               </div>
             </div>
             <div className="viewer__body">

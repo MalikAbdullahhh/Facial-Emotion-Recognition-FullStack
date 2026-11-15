@@ -8,6 +8,7 @@ import { emotionMeta, toKey } from '../lib/emotions';
 import { useDocTitle, useUser } from '../lib/hooks';
 import { PageHeader } from '../components/layout';
 import { Drawer, EASE, EmotionBars, Modal, Spectrum } from '../components/ui';
+import { CountUp } from '../components/fx';
 import './Dashboard.css';
 import './Admin.css';
 
@@ -51,13 +52,13 @@ function UserDetail({ user }) {
         <div><dt>Time in FER</dt><dd className="num">{fmtDur(user.totalTimeOnSite)}</dd></div>
       </dl>
       <section className="card card-pad">
-        <div className="card-head"><div><h3>Live readings · last 24 h</h3><p>{emo ? `${total} readings` : 'Loading…'}</p></div></div>
+        <div className="card-head"><div><h3>Live readings · last 24 h</h3><p>{emo ? `${total} readings` : <span className="skeleton" style={{ display: 'inline-block', width: 90, height: 12 }} />}</p></div></div>
         {emo && total > 0 ? (
           <><Spectrum counts={counts} height={10} /><div style={{ marginTop: 16 }}><EmotionBars scores={Object.fromEntries(Object.entries(counts).map(([k, v]) => [k, v / total]))} /></div></>
         ) : emo ? <p className="muted">No live readings in the last 24 hours.</p> : <div className="skeleton" style={{ height: 80 }} />}
       </section>
       <section className="card card-pad">
-        <div className="card-head"><div><h3>Photo analyses</h3><p>{imgs ? `${imgs.total} in total` : 'Loading…'}</p></div></div>
+        <div className="card-head"><div><h3>Photo analyses</h3><p>{imgs ? `${imgs.total} in total` : <span className="skeleton" style={{ display: 'inline-block', width: 70, height: 12 }} />}</p></div></div>
         {imgs?.analyses?.length ? (
           <div className="thumbs">
             {imgs.analyses.slice(0, 8).map((a) => (
@@ -160,7 +161,7 @@ export default function AdminDashboard() {
                   ['Messages', s.totalContacts, `${unread} unread`],
                   ['Subscribers', s.totalNewsletters, 'product updates'],
                 ].map(([l, v, sub]) => (
-                  <div key={l} className="stat kpi"><span className="stat-label">{l}</span>{d.loading && !d.stats ? <span className="skeleton" style={{ height: 34, width: 60 }} /> : <span className="stat-value num">{v ?? 0}</span>}<span className="stat-sub">{sub}</span></div>
+                  <div key={l} className="stat kpi"><span className="stat-label">{l}</span>{d.loading && !d.stats ? <span className="skeleton" style={{ height: 34, width: 60 }} /> : <span className="stat-value num"><CountUp to={v ?? 0} duration={1.1} /></span>}<span className="stat-sub">{d.loading && !d.stats ? <span className="skeleton" style={{ display: 'inline-block', height: 10, width: 90 }} /> : sub}</span></div>
                 ))}
               </section>
               <div className="dash-row dash-row--even">
@@ -176,6 +177,7 @@ export default function AdminDashboard() {
                         </button>
                       </li>
                     ))}
+                    {d.loading && !d.users.length && Array.from({ length: 4 }).map((_, i) => <li key={i} style={{ padding: '10px 0' }}><span className="skeleton" style={{ display: 'block', height: 40 }} /></li>)}
                     {!d.users.length && !d.loading && <li className="muted">No users yet.</li>}
                   </ul>
                 </section>
@@ -191,6 +193,7 @@ export default function AdminDashboard() {
                         </button>
                       </li>
                     ))}
+                    {d.loading && !d.contacts.length && Array.from({ length: 3 }).map((_, i) => <li key={i} style={{ padding: '10px 0' }}><span className="skeleton" style={{ display: 'block', height: 40 }} /></li>)}
                     {!d.contacts.length && !d.loading && <li className="muted">No messages yet.</li>}
                   </ul>
                 </section>

@@ -5,6 +5,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { AppShell, AnimatedOutlet, RequireAuth, ScrollManager, SiteLayout } from './components/layout';
 import Home from './pages/Home';
+import { AuthSkeleton } from './components/ui/Skeletons';
 
 const About = lazy(() => import('./pages/About'));
 const Contact = lazy(() => import('./pages/Contact'));
@@ -18,11 +19,6 @@ const ImageAnalyses = lazy(() => import('./pages/ImageAnalyses'));
 const Profile = lazy(() => import('./pages/Profile'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
-const Loading = () => (
-  <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', color: 'var(--faint)' }} aria-busy="true">
-    <span className="spinner" />
-  </div>
-);
 
 export default function App() {
   return (
@@ -31,7 +27,7 @@ export default function App() {
         <MotionConfig reducedMotion="user">
           <BrowserRouter>
             <ScrollManager />
-            <Suspense fallback={<Loading />}>
+            <Suspense fallback={<AuthSkeleton />}>
               <Routes>
                 <Route element={<SiteLayout />}>
                   <Route path="/" element={<Home />} />

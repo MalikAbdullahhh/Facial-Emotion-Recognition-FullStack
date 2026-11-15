@@ -9,6 +9,7 @@ import { useDocTitle, useUser } from '../lib/hooks';
 import { useTheme } from '../context/ThemeContext';
 import { PageHeader } from '../components/layout';
 import { EASE, EmotionChip, Segmented, Spectrum } from '../components/ui';
+import { CountUp } from '../components/fx';
 import './Dashboard.css';
 
 const RANGES = { day: 24 * 3600e3, week: 7 * 24 * 3600e3, all: Infinity };
@@ -156,7 +157,7 @@ export default function UserDashboard() {
         ].map(([l, v, sub]) => (
           <div className="stat kpi" key={l}>
             <span className="stat-label">{l}</span>
-            {v === null ? <span className="skeleton" style={{ height: 34, width: 80 }} /> : <span className="stat-value num">{v}</span>}
+            {v === null ? <span className="skeleton" style={{ height: 34, width: 80 }} /> : <span className="stat-value num"><CountUp to={Number(String(v).replace(/,/g, '')) || 0} duration={1.2} /></span>}
             <span className="stat-sub">{sub}</span>
           </div>
         ))}
@@ -172,7 +173,9 @@ export default function UserDashboard() {
           <div className="card-head">
             <div><h3>Expression mix over time</h3><p>{range === 'day' ? 'Readings per hour' : 'Readings per day'}</p></div>
           </div>
-          {view.total ? (
+          {data.loading ? (
+            <div className="chart chart--skeleton" aria-busy="true">{Array.from({ length: 7 }).map((_, i) => <span key={i} className="skeleton" style={{ height: `${35 + ((i * 29) % 55)}%` }} />)}</div>
+          ) : view.total ? (
             <div className="chart">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={view.chart} margin={{ top: 4, right: 4, bottom: 0, left: -18 }} barCategoryGap="22%">
@@ -189,8 +192,8 @@ export default function UserDashboard() {
           ) : (
             <div className="empty">
               <span className="empty-icon"><FiActivity /></span>
-              <h3>{data.loading ? 'Loading…' : 'No readings in this range'}</h3>
-              {!data.loading && <><p>Start a live session and readings will appear here, hour by hour.</p><Link to="/emotion-detection" className="btn btn-primary btn-sm"><FiCamera />Start live session</Link></>}
+              <h3>No readings in this range</h3>
+              <p>Start a live session and readings will appear here, hour by hour.</p><Link to="/emotion-detection" className="btn btn-primary btn-sm"><FiCamera />Start live session</Link>
             </div>
           )}
         </section>
@@ -237,7 +240,7 @@ export default function UserDashboard() {
               })}
             </ul>
           ) : (
-            <p className="muted dash-empty">{data.loading ? 'Loading…' : 'No sessions in this range yet.'}</p>
+            data.loading ? <div className="sk-list">{Array.from({ length: 4 }).map((_, i) => <span key={i} className="skeleton" style={{ height: 52 }} />)}</div> : <p className="muted dash-empty">No sessions in this range yet.</p>
           )}
         </section>
 
@@ -256,7 +259,7 @@ export default function UserDashboard() {
               ))}
             </div>
           ) : (
-            <p className="muted dash-empty">{data.loading ? 'Loading…' : <>No photos yet. <Link to="/emotion-detection?mode=photo" className="link">Analyse one</Link></>}</p>
+            data.loading ? <div className="thumbs">{Array.from({ length: 4 }).map((_, i) => <span key={i} className="skeleton" style={{ aspectRatio: '1', borderRadius: 14 }} />)}</div> : <p className="muted dash-empty">No photos yet. <Link to="/emotion-detection?mode=photo" className="link">Analyse one</Link></p>
           )}
         </section>
       </div>

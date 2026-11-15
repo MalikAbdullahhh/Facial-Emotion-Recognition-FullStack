@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { Link, NavLink, Navigate, useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { FiArrowUpRight, FiCheck, FiCamera, FiClock, FiGrid, FiLogOut, FiMenu, FiShield, FiUser, FiX, FiUsers, FiMail, FiInbox, FiExternalLink } from 'react-icons/fi';
 import { Logo, ThemeToggle, EASE } from '../ui';
+import { Curtain, scrollToEl, useSmoothScroll } from '../fx';
+import { AppSkeleton, SiteSkeleton } from '../ui/Skeletons';
 import { useUser } from '../../lib/hooks';
 import { initials, signOut } from '../../lib/auth';
 import api from '../../utils/api';
@@ -15,17 +17,27 @@ function Frozen() {
   return o;
 }
 
-export function AnimatedOutlet({ className }) {
+export function AnimatedOutlet({ className, variant = 'app' }) {
   const { pathname } = useLocation();
   const reduce = useReducedMotion();
+  if (variant === 'site') {
+    return (
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={pathname} className={className} initial={reduce ? false : { opacity: 1 }} animate={{ opacity: 1 }} exit={reduce ? undefined : { opacity: 1, transition: { duration: 0.55 } }}>
+          {!reduce && <Curtain />}
+          <Frozen />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
         key={pathname}
         className={className}
-        initial={reduce ? false : { opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE } }}
-        exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.15 } }}
+        initial={reduce ? false : { opacity: 0, y: 14, filter: 'blur(6px)' }}
+        animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.55, ease: EASE } }}
+        exit={reduce ? undefined : { opacity: 0, y: -6, filter: 'blur(4px)', transition: { duration: 0.18 } }}
       >
         <Frozen />
       </motion.div>
@@ -38,10 +50,11 @@ export function ScrollManager() {
   const { pathname, hash } = useLocation();
   useEffect(() => {
     if (hash) {
-      const t = setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: 'smooth' }), 220);
+      const t = setTimeout(() => scrollToEl(document.getElementById(hash.slice(1))), 700);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => window.scrollTo({ top: 0 }), 160);
+    // Jump to top while the curtain covers the page.
+    const t = setTimeout(() => { if (window.__lenis) window.__lenis.scrollTo(0, { immediate: true }); else window.scrollTo({ top: 0 }); }, 520);
     return () => clearTimeout(t);
   }, [pathname, hash]);
   return null;
@@ -71,12 +84,20 @@ function SiteNav() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
+  const [onDark, setOnDark] = useState(false);
   useEffect(() => {
-    const on = () => setScrolled(window.scrollY > 8);
+    const on = () => {
+      setScrolled(window.scrollY > 8);
+      // Light-on-dark nav while any [data-nav-dark] section sits under it.
+      const y = 34;
+      const dark = [...document.querySelectorAll('[data-nav-dark]')].some((el) => { const r = el.getBoundingClientRect(); return r.top <= y && r.bottom >= y; });
+      setOnDark(dark);
+    };
     on();
     window.addEventListener('scroll', on, { passive: true });
-    return () => window.removeEventListener('scroll', on);
-  }, []);
+    const id = setInterval(on, 600);
+    return () => { window.removeEventListener('scroll', on); clearInterval(id); };
+  }, [pathname]);
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : '';
@@ -86,7 +107,7 @@ function SiteNav() {
   const isActive = (to) => !to.includes('#') && pathname === to;
 
   return (
-    <header className={`site-nav ${scrolled || open ? 'is-solid' : ''}`}>
+    <header className={`site-nav ${scrolled || open ? 'is-solid' : ''} ${onDark && !open ? 'is-on-dark' : ''}`}>
       <div className="container site-nav__in">
         <Link to="/" aria-label="FER home" className="site-nav__brand"><Logo /></Link>
         <nav className="site-nav__links" aria-label="Primary">
@@ -172,7 +193,7 @@ function SiteFooter() {
         <div className="site-foot__top">
           <div className="site-foot__brand">
             <Logo />
-            <p>Facial expression recognition that runs entirely in your browser. Built as an open research project in Lahore.</p>
+            <p>Facial expression recognition that runs entirely in your browser. Designed and built in Lahore.</p>
             <Updates />
           </div>
           <div className="site-foot__cols">
@@ -196,7 +217,7 @@ function SiteFooter() {
         </div>
         <div className="site-foot__bottom">
           <span>© {new Date().getFullYear()} FER</span>
-          <span>Designed and built by Malik Abdullah &amp; Malik M. Farhan</span>
+          <span>Designed and built by Malik Abdullah</span>
         </div>
       </div>
     </footer>
@@ -204,11 +225,12 @@ function SiteFooter() {
 }
 
 export function SiteLayout() {
+  useSmoothScroll(true);
   return (
     <div className="site">
       <a href="#main" className="skip-link">Skip to content</a>
       <SiteNav />
-      <main id="main"><AnimatedOutlet /></main>
+      <main id="main"><Suspense fallback={<SiteSkeleton />}><AnimatedOutlet variant="site" /></Suspense></main>
       <SiteFooter />
     </div>
   );
@@ -258,6 +280,7 @@ export function AppShell() {
               <span className="app-side__label">Admin</span>
               {ADMIN_NAV.map((n) => (
                 <NavLink key={n.to} to={n.to} className={() => `app-link ${active(n) ? 'is-active' : ''}`} end>
+                  {active(n) && <motion.span layoutId="side-pill" className="app-link__pill" transition={{ duration: 0.45, ease: EASE }} />}
                   <n.icon />{n.label}
                 </NavLink>
               ))}
@@ -266,6 +289,7 @@ export function AppShell() {
           )}
           {APP_NAV.map((n) => (
             <NavLink key={n.to} to={n.to} className={() => `app-link ${active(n) ? 'is-active' : ''}`}>
+              {active(n) && <motion.span layoutId="side-pill" className="app-link__pill" transition={{ duration: 0.45, ease: EASE }} />}
               <n.icon />{n.label}
             </NavLink>
           ))}
@@ -292,12 +316,13 @@ export function AppShell() {
       </header>
 
       <main id="app-main" className="app-main">
-        <AnimatedOutlet />
+        <Suspense fallback={<AppSkeleton />}><AnimatedOutlet /></Suspense>
       </main>
 
       <nav className="app-tabs" aria-label="App">
         {mobile.map((n) => (
           <NavLink key={n.to} to={n.to} className={() => `app-tab ${active(n) ? 'is-active' : ''}`} end>
+            {active(n) && <motion.span layoutId="tab-pill" className="app-tab__pill" transition={{ duration: 0.4, ease: EASE }} />}
             <n.icon /><span>{n.short || n.label}</span>
           </NavLink>
         ))}
