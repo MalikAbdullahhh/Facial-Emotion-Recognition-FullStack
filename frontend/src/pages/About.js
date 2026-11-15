@@ -90,7 +90,7 @@ export default function About() {
             <p className="founder__role">Machine learning, engineering & design</p>
             <p className="founder__bio">Malik trained the original expression classifier, designed the on-device pipeline, and built FER end to end — the model integration, the API, the dashboards and the reporting flow.</p>
             <Magnetic strength={0.25}>
-              <a href="https://abdullah-malik-portfolio.malikabdullah0120.workers.dev" target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-lg">View portfolio <FiArrowUpRight /></a>
+              <a href="https://abdullah-malik-portfolio.fluxwright.co" target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-lg">View portfolio <FiArrowUpRight /></a>
             </Magnetic>
           </div>
         </div>
