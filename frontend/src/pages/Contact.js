@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { FiAlertCircle, FiCheck, FiChevronDown, FiCopy, FiMail, FiSend } from 'react-icons/fi';
 import api from '../utils/api';
 import { apiError } from '../lib/auth';
+import { sendContact } from '../lib/fwContact';
 import { useDocTitle } from '../lib/hooks';
 import { EASE, Reveal } from '../components/ui';
 import { Magnetic } from '../components/fx';
@@ -86,12 +87,14 @@ export default function Contact() {
   const submit = async (e) => {
     e.preventDefault();
     setState({ status: 'sending', error: '' });
-    try {
-      await api.post('/contact', form);
-      setState({ status: 'sent', error: '' });
-    } catch (err) {
-      setState({ status: 'idle', error: apiError(err, 'Your message couldn’t be sent. Please try again.') });
-    }
+    // Save it in the admin dashboard and email it; either one is enough to count as received.
+    const [saved, mailed] = await Promise.allSettled([
+      api.post('/contact', form),
+      sendContact('facial-emotion-recognition', { name: form.name, email: form.email, subject: form.subject, message: form.message }),
+    ]);
+    const emailed = mailed.status === 'fulfilled' && mailed.value.ok;
+    if (saved.status === 'fulfilled' || emailed) setState({ status: 'sent', error: '' });
+    else setState({ status: 'idle', error: mailed.status === 'fulfilled' && !mailed.value.ok ? mailed.value.error : apiError(saved.reason, 'Your message couldn’t be sent. Please try again.') });
   };
 
   return (
