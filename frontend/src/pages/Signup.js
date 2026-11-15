@@ -44,29 +44,31 @@ export default function Signup() {
   };
 
   return (
-    <AuthLayout panelTitle="Your expressions, charted over time." panelText="Save live sessions and photo analyses, compare them side by side and export clean reports.">
-      <h1>Create your account</h1>
-      <p className="auth-sub">Free forever. Takes about 20 seconds.</p>
+    <AuthLayout heading="Create your account" sub="Free forever. Takes about 20 seconds." panelTitle="Chart every" panelText="Save live sessions and photo analyses, compare them side by side and export clean reports.">
       <form onSubmit={submit}>
         <div className="field">
           <label htmlFor="name">Full name</label>
-          <input id="name" className="input" required autoComplete="name" autoFocus value={form.name} onChange={set('name')} placeholder="Ayesha Khan" />
+          <input id="name" className="input" required autoComplete="name" value={form.name} onChange={set('name')} placeholder="Ayesha Khan" />
         </div>
         <div className="field">
           <label htmlFor="email">Email</label>
           <input id="email" type="email" className="input" required autoComplete="email" value={form.email} onChange={set('email')} placeholder="you@example.com" />
         </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <PasswordInput id="password" required minLength={6} autoComplete="new-password" value={form.password} onChange={set('password')} aria-describedby="pw-strength" />
+        <div className="auth-row">
+          <div className="field">
+            <label htmlFor="password">Password</label>
+            <PasswordInput id="password" required minLength={6} autoComplete="new-password" value={form.password} onChange={set('password')} aria-describedby="pw-strength" />
+          </div>
+          <div className="field">
+            <label htmlFor="confirm">Confirm</label>
+            <PasswordInput id="confirm" required autoComplete="new-password" value={form.confirm} onChange={set('confirm')} aria-invalid={form.confirm && form.confirm !== form.password ? 'true' : undefined} />
+          </div>
+        </div>
+        <div className="strength-wrap">
           <div className="strength" aria-hidden="true">
             {[1, 2, 3, 4].map((n) => <span key={n} style={{ background: n <= strength ? COLORS[strength] : undefined }} />)}
           </div>
           <span id="pw-strength" className="strength-label">{strength ? `${LABELS[strength]} password` : 'At least 6 characters'}</span>
-        </div>
-        <div className="field">
-          <label htmlFor="confirm">Confirm password</label>
-          <PasswordInput id="confirm" required autoComplete="new-password" value={form.confirm} onChange={set('confirm')} aria-invalid={form.confirm && form.confirm !== form.password ? 'true' : undefined} />
         </div>
         {error && <div className="alert alert-error" role="alert"><FiAlertCircle />{error}</div>}
         <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>

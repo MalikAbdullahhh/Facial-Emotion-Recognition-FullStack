@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { FiAlertCircle, FiCheck, FiChevronDown, FiSend } from 'react-icons/fi';
+import { FiAlertCircle, FiCheck, FiChevronDown, FiCopy, FiMail, FiSend } from 'react-icons/fi';
 import api from '../utils/api';
 import { apiError } from '../lib/auth';
 import { useDocTitle } from '../lib/hooks';
 import { EASE, Reveal } from '../components/ui';
-import { SplitReveal } from '../components/fx';
+import { Magnetic } from '../components/fx';
+import PageHero from '../components/landing/PageHero';
+import './Home.css';
 import './Pages.css';
 
 const TOPICS = ['General question', 'Bug report', 'Research collaboration', 'Accessibility', 'Privacy'];
@@ -40,6 +42,41 @@ function Faq() {
   );
 }
 
+const EMAIL = 'malikabdullah0120@gmail.com';
+
+function EmailCard() {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(EMAIL); } catch (e) { /* clipboard blocked */ }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2200);
+  };
+  return (
+    <div className="mailcard">
+      <span className="label label--dark">Email directly</span>
+      <a className="mailcard__addr" href={`mailto:${EMAIL}`}>
+        <span>malikabdullah0120</span><span className="mailcard__domain">@gmail.com</span>
+      </a>
+      <div className="mailcard__actions">
+        <Magnetic><a className="btn btn-lg hero__cta-main" href={`mailto:${EMAIL}?subject=${encodeURIComponent('Hello from the FER website')}`}><FiMail /> Write an email</a></Magnetic>
+        <Magnetic strength={0.25}>
+          <button type="button" className="btn btn-lg hero__cta-alt" onClick={copy} aria-live="polite">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span key={copied ? 'y' : 'n'} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                {copied ? <><FiCheck /> Copied</> : <><FiCopy /> Copy address</>}
+              </motion.span>
+            </AnimatePresence>
+          </button>
+        </Magnetic>
+      </div>
+      <dl className="mailcard__facts">
+        <div><dt>Replies</dt><dd>Within 2 working days</dd></div>
+        <div><dt>Based in</dt><dd>Lahore, Pakistan</dd></div>
+      </dl>
+    </div>
+  );
+}
+
 export default function Contact() {
   useDocTitle('Contact');
   const [form, setForm] = useState({ name: '', email: '', subject: TOPICS[0], message: '' });
@@ -58,18 +95,16 @@ export default function Contact() {
   };
 
   return (
-    <div className="page">
-      <section className="page-hero page-hero--tight">
-        <div className="container">
-          <Reveal>
-            <p className="kicker">Contact</p>
-            <SplitReveal as="h1" text="Talk to the person who built it." muted={[0, 1]} />
-            <p className="lead page-hero__lead">Questions, bugs, research ideas — every message gets read, and replies usually go out within two working days.</p>
-          </Reveal>
-        </div>
-      </section>
+    <div className="home page">
+      <PageHero
+        label="Contact"
+        title="Talk to the person who built it."
+        muted={[0, 1]}
+        lead="Questions, bugs, research ideas or collaborations — every message gets read, and replies usually go out within two working days."
+        visual={<EmailCard />}
+      />
 
-      <section className="page-sec contact">
+      <section className="page-sec contact section-tight">
         <div className="container contact__grid">
           <Reveal className="card card-pad contact__form">
             <AnimatePresence mode="wait" initial={false}>
@@ -105,12 +140,7 @@ export default function Contact() {
           </Reveal>
 
           <Reveal delay={0.08} className="contact__side">
-            <dl className="contact__facts">
-              <div><dt>Response time</dt><dd>Within 2 working days</dd></div>
-              <div><dt>Based in</dt><dd>Lahore, Pakistan · working remotely</dd></div>
-              <div><dt>Best for</dt><dd>Support, research and feedback</dd></div>
-            </dl>
-            <h2 className="contact__faq-title">Common questions</h2>
+            <h2 className="contact__faq-title" style={{ marginTop: 0 }}>Common questions</h2>
             <Faq />
           </Reveal>
         </div>

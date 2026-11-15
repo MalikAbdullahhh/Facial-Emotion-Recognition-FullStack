@@ -32,14 +32,12 @@ export default function Login() {
   };
 
   return (
-    <AuthLayout panelTitle="Pick up where you left off." panelText="Your sessions, photo analyses and reports are waiting in your dashboard.">
-      <h1>Welcome back</h1>
-      <p className="auth-sub">Sign in to your FER account.</p>
+    <AuthLayout heading="Welcome back" sub="Sign in to your FER account." panelTitle="Pick up every" panelText="Your sessions, photo analyses and reports are waiting right where you left them.">
       <form onSubmit={submit} noValidate={false}>
         {params.get('expired') && !error && <div className="alert alert-info"><FiInfo />Your session expired. Sign in again to continue.</div>}
         <div className="field">
           <label htmlFor="email">Email</label>
-          <input id="email" type="email" className="input" required autoComplete="email" autoFocus value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@example.com" />
+          <input id="email" type="email" className="input" required autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@example.com" />
         </div>
         <div className="field">
           <label htmlFor="password">Password</label>

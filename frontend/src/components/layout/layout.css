@@ -112,7 +112,9 @@
 .app-tab__pill { position: absolute; left: 22%; right: 22%; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--signal); }
 
 /* Page curtain */
-.curtain { position: fixed; inset: 0; z-index: 300; background: #0b0c0e; pointer-events: none; }
+.curtain { position: fixed; inset: 0; z-index: 300; background: #0b0c0e; pointer-events: none; display: grid; place-items: center; }
+.curtain__label { display: inline-flex; align-items: center; gap: 14px; color: #f2f1ec; font-family: var(--font-display); font-weight: 700; font-size: clamp(2rem, 5vw, 3.6rem); letter-spacing: -0.045em; }
+.curtain__label svg { width: 0.9em; height: 0.9em; }
 /* App content choreography */
 @keyframes card-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .app-main .page-head { animation: card-in 0.6s var(--ease) both; }
@@ -124,3 +126,5 @@
 .app-main .kpi { transition: background-color 0.25s; }
 .app-main .kpi:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) { .app-main .card, .app-main .page-head { animation: none; } }
+.site-nav__links a { position: relative; isolation: isolate; }
+.site-nav__pill { position: absolute; inset: 0; z-index: -1; border-radius: 999px; background: var(--bg-2); }

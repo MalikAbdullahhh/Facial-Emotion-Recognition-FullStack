@@ -1,53 +1,46 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { FiArrowLeft, FiEye, FiEyeOff, FiLock } from 'react-icons/fi';
-import { EMOTIONS } from '../../lib/emotions';
-import { EmotionBars, Logo, ThemeToggle } from '../../components/ui';
-import ExpressionFace from '../../components/ui/ExpressionFace';
+import { emotionMeta } from '../../lib/emotions';
+import { Logo, ThemeToggle } from '../../components/ui';
+import PointFace from '../../components/fx/PointFace';
+import { EASE, SplitReveal } from '../../components/fx';
 import './Auth.css';
 
-const CYCLE = ['happy', 'neutral', 'surprised', 'sad'];
-const scoresFor = (key) => {
-  const base = { happy: 0.03, neutral: 0.06, surprised: 0.02, sad: 0.02, angry: 0.01, fear: 0.01, disgust: 0.01 };
-  base[key] = 0.84;
-  return base;
-};
+const WORDS = { happy: 'smile', surprised: 'gasp', neutral: 'poker face', sad: 'frown', angry: 'scowl', fear: 'flinch', disgust: 'sneer' };
 
-function ProductPanel({ title, children }) {
-  const reduce = useReducedMotion();
-  const [i, setI] = useState(0);
-  useEffect(() => {
-    if (reduce) return undefined;
-    const id = setInterval(() => setI((n) => (n + 1) % CYCLE.length), 2600);
-    return () => clearInterval(id);
-  }, [reduce]);
-  const key = CYCLE[i];
-  const meta = EMOTIONS.find((e) => e.key === key);
+function Panel({ title, text }) {
+  const [emo, setEmo] = useState('happy');
+  const meta = emotionMeta(emo);
   return (
-    <aside className="auth-panel" aria-hidden="true">
-      <div className="auth-panel__card">
-        <div className="auth-panel__stage">
-          <div className="auth-panel__face" style={{ color: meta.color }}><ExpressionFace emotion={key} color={meta.color} /></div>
-          <span className="auth-panel__tag"><span className="dot dot-live" />Live · on-device</span>
-        </div>
-        <div className="auth-panel__read">
-          <span>Dominant</span>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.strong key={key} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }} style={{ color: meta.color }}>{meta.label}</motion.strong>
-          </AnimatePresence>
-        </div>
-        <EmotionBars scores={scoresFor(key)} compact />
-      </div>
+    <aside className="auth-panel" style={{ '--emo': meta.dark }} aria-hidden="true">
+      <div className="auth-panel__glow" />
+      <div className="auth-panel__face"><PointFace onEmotion={setEmo} labels={false} interval={2800} zoom={0.95} /></div>
+      <motion.div className="auth-panel__reading" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: EASE, delay: 0.5 }}>
+        <span><span className="auth-panel__dot" />Live reading</span>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.strong key={emo} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25 }} style={{ color: meta.dark }}>{meta.label}</motion.strong>
+        </AnimatePresence>
+      </motion.div>
       <div className="auth-panel__copy">
-        <h2>{title}</h2>
-        {children}
+        <h2>{title} <span className="auth-panel__word" style={{ color: meta.dark }}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span key={emo} initial={{ opacity: 0, y: '40%' }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: '-40%' }} transition={{ duration: 0.35, ease: EASE }}>{WORDS[emo]}.</motion.span>
+          </AnimatePresence>
+        </span></h2>
+        <p>{text}</p>
+        <ul className="auth-panel__facts">
+          <li><strong className="num">0</strong><span>frames uploaded</span></li>
+          <li><strong className="num">7</strong><span>expressions</span></li>
+          <li><strong className="num">~3/s</strong><span>live readings</span></li>
+        </ul>
       </div>
     </aside>
   );
 }
 
-export default function AuthLayout({ panelTitle, panelText, children }) {
+export default function AuthLayout({ heading, sub, panelTitle = 'Every', panelText, children }) {
   return (
     <div className="auth">
       <div className="auth-main">
@@ -59,13 +52,17 @@ export default function AuthLayout({ panelTitle, panelText, children }) {
           </div>
         </header>
         <div className="auth-body">
-          <motion.div className="auth-form" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}>
-            {children}
-          </motion.div>
+          <div className="auth-form">
+            {heading && <SplitReveal as="h1" text={heading} delay={0.15} />}
+            {sub && <motion.p className="auth-sub" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.4 }}>{sub}</motion.p>}
+            <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: EASE, delay: 0.3 }}>
+              {children}
+            </motion.div>
+          </div>
         </div>
-        <p className="auth-foot"><FiLock /> Your camera never leaves your device. We only store labels and scores.</p>
+        <p className="auth-foot"><FiLock /> Your camera never leaves your device. Only labels and scores are stored.</p>
       </div>
-      <ProductPanel title={panelTitle}><p>{panelText}</p></ProductPanel>
+      <Panel title={panelTitle} text={panelText} />
     </div>
   );
 }

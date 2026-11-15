@@ -35,7 +35,7 @@
 .hero__title { margin-top: 22px; color: #fff; font-size: clamp(3rem, 7.4vw, 7.2rem); line-height: 0.92; letter-spacing: -0.055em; font-weight: 750; }
 .hero__line { display: block; overflow: hidden; padding-bottom: 0.06em; }
 .hero__line > span { display: inline-block; }
-.hero__line--word { position: relative; height: 1em; }
+.hero__line--word { position: relative; }
 .hero__word { position: absolute; left: 0; top: 0; display: inline-block; white-space: nowrap; }
 .hero__lead { margin-top: 22px; max-width: 30rem; color: var(--on-dark-mute); font-size: clamp(1rem, 1.25vw, 1.15rem); line-height: 1.55; }
 .hero__ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
@@ -88,6 +88,7 @@
 .compare__head { display: grid; gap: 24px; margin-bottom: 48px; }
 .compare__head .h-xl { max-width: 14ch; }
 .compare__intro { color: var(--muted); max-width: 40ch; align-self: end; }
+.compare__intro p { color: var(--muted); }
 @media (min-width: 960px) { .compare__head { grid-template-columns: 1.4fr 1fr; gap: 64px; } }
 .compare__rows { border-top: 1px solid var(--line-2); }
 .compare__row { position: relative; display: grid; grid-template-columns: 40px 1fr auto; grid-template-areas: 'n what to' 'n was tag'; gap: 4px 16px; align-items: center; padding: 26px 8px; border-bottom: 1px solid var(--line-2); isolation: isolate; transition: padding 0.4s var(--ease); }
@@ -280,3 +281,45 @@
 @media (min-width: 900px) { .closing__row { grid-template-columns: 1fr auto; align-items: center; } }
 @media (max-width: 479px) { .closing__btns .magnetic, .closing__btns .btn { width: 100%; } }
 @media (max-width: 1023px) { .wheel__info { min-height: 0; } .wheel__hint { display: none; } }
+
+/* ── Hero interactivity ─────────────────────────────────── */
+.hero__spot { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(420px circle at var(--mx, 70%) var(--my, 40%), color-mix(in srgb, var(--emo) 14%, transparent), transparent 70%); transition: background 0.2s; }
+.hero__face-hit { display: block; width: 100%; height: 100%; cursor: pointer; border-radius: 40px; }
+.hero__face-hit:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.4); outline-offset: -12px; }
+.hero__vf { position: absolute; left: 50%; top: 50%; width: min(70%, 520px); aspect-ratio: 0.82; transform: translate(-50%, -50%); pointer-events: none; display: none; }
+.hero__vf i { position: absolute; width: 26px; height: 26px; border: 1.5px solid rgba(255, 255, 255, 0.28); }
+.hero__vf i:nth-child(1) { left: 0; top: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 8px; }
+.hero__vf i:nth-child(2) { right: 0; top: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 8px; }
+.hero__vf i:nth-child(3) { right: 0; bottom: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 8px; }
+.hero__vf i:nth-child(4) { left: 0; bottom: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 8px; }
+.hero__vf-tl, .hero__vf-br { position: absolute; font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.08em; color: rgba(238, 237, 232, 0.5); white-space: nowrap; }
+.hero__vf-tl { left: 34px; top: 6px; }
+.hero__vf-tl::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #ff6b66; margin-right: 6px; vertical-align: 1px; animation: pulse 1.6s infinite; }
+.hero__vf-br { right: 34px; bottom: 6px; }
+.hero__hint { position: absolute; left: 50%; bottom: 2%; transform: translateX(-50%); display: none; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--on-dark-line); font-size: 0.75rem; color: var(--on-dark-mute); pointer-events: none; }
+.hero__hint svg { width: 12px; height: 12px; }
+@media (min-width: 900px) { .hero__vf { display: block; } .hero__hint { display: inline-flex; } }
+.caret { display: inline-block; width: 0.07em; height: 0.82em; margin-left: 0.06em; background: currentColor; vertical-align: -0.04em; animation: caret 1s steps(1) infinite; }
+.caret--word { opacity: 0.8; }
+@keyframes caret { 50% { opacity: 0; } }
+.hero__line--word { min-height: 1em; }
+.dock { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 26px; }
+.dock__item { display: inline-flex; align-items: center; gap: 0; height: 32px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--on-dark-line); background: rgba(255, 255, 255, 0.03); color: var(--on-dark-mute); font-size: 0.78rem; font-weight: 600; transition: background-color 0.25s, border-color 0.25s, color 0.25s, gap 0.35s var(--ease), padding 0.35s var(--ease); }
+.dock__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 0 var(--c); transition: box-shadow 0.35s; }
+.dock__label { max-width: 0; overflow: hidden; white-space: nowrap; transition: max-width 0.4s var(--ease), margin 0.4s var(--ease); }
+.dock__item:hover .dock__label, .dock__item.is-on .dock__label { max-width: 90px; margin-left: 8px; }
+.dock__item.is-on { color: #fff; border-color: color-mix(in srgb, var(--c) 60%, transparent); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.dock__item.is-on .dock__dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 25%, transparent); }
+.hero__reading-mini { display: flex; align-items: flex-end; gap: 4px; height: 34px; margin-top: 4px; }
+.hero__reading-mini i { flex: 1; border-radius: 2px; }
+@media (max-width: 767px) { .dock { margin-top: 18px; } .hero__lead { font-size: 0.95rem; } }
+@media (max-height: 700px) and (min-width: 768px) { .dock { display: none; } }
+
+.more-link { display: inline-flex; align-items: center; gap: 12px; margin-top: 24px; font-weight: 600; color: var(--ink); }
+.more-link__icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-2); transition: transform 0.4s var(--ease), background-color 0.25s, color 0.25s, border-color 0.25s; }
+.more-link:hover .more-link__icon { transform: rotate(45deg); background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.more-link span:first-child { background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat; transition: background-size 0.4s var(--ease); }
+.more-link:hover span:first-child { background-size: 100% 1px; }
+.more-link--dark { color: #fff; }
+.more-link--dark .more-link__icon { border-color: rgba(255, 255, 255, 0.2); }
+.more-link--dark:hover .more-link__icon { background: #fff; color: #0b0c0e; border-color: #fff; }

@@ -22,8 +22,8 @@ export function AnimatedOutlet({ className, variant = 'app' }) {
   const reduce = useReducedMotion();
   if (variant === 'site') {
     return (
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div key={pathname} className={className} initial={reduce ? false : { opacity: 1 }} animate={{ opacity: 1 }} exit={reduce ? undefined : { opacity: 1, transition: { duration: 0.55 } }}>
+      <AnimatePresence mode="wait">
+        <motion.div key={pathname} className={className} initial={reduce ? false : { opacity: 1 }} animate={{ opacity: 1 }} exit={reduce ? undefined : { opacity: 1, transition: { duration: 0.5 } }}>
           {!reduce && <Curtain />}
           <Frozen />
         </motion.div>
@@ -31,7 +31,7 @@ export function AnimatedOutlet({ className, variant = 'app' }) {
     );
   }
   return (
-    <AnimatePresence mode="wait" initial={false}>
+    <AnimatePresence mode="wait">
       <motion.div
         key={pathname}
         className={className}
@@ -72,8 +72,9 @@ export function RequireAuth({ children, role }) {
 
 /* ── Public site ──────────────────────────────────────────── */
 const SITE_LINKS = [
-  { to: '/#how', label: 'How it works' },
-  { to: '/#privacy', label: 'Privacy' },
+  { to: '/product', label: 'Product' },
+  { to: '/expressions', label: 'Expressions' },
+  { to: '/privacy', label: 'Privacy' },
   { to: '/about', label: 'About' },
   { to: '/contact', label: 'Contact' },
 ];
@@ -104,7 +105,7 @@ function SiteNav() {
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  const isActive = (to) => !to.includes('#') && pathname === to;
+  const isActive = (to) => pathname === to;
 
   return (
     <header className={`site-nav ${scrolled || open ? 'is-solid' : ''} ${onDark && !open ? 'is-on-dark' : ''}`}>
@@ -112,7 +113,10 @@ function SiteNav() {
         <Link to="/" aria-label="FER home" className="site-nav__brand"><Logo /></Link>
         <nav className="site-nav__links" aria-label="Primary">
           {SITE_LINKS.map((l) => (
-            <Link key={l.to} to={l.to} className={isActive(l.to) ? 'is-active' : ''}>{l.label}</Link>
+            <Link key={l.to} to={l.to} className={isActive(l.to) ? 'is-active' : ''}>
+              {isActive(l.to) && <motion.span layoutId="nav-pill" className="site-nav__pill" transition={{ duration: 0.45, ease: EASE }} />}
+              <span>{l.label}</span>
+            </Link>
           ))}
         </nav>
         <div className="site-nav__actions">
@@ -199,15 +203,15 @@ function SiteFooter() {
           <div className="site-foot__cols">
             <div>
               <h4>Product</h4>
-              <Link to="/#demo">Live demo</Link>
-              <Link to="/#how">How it works</Link>
-              <Link to="/#privacy">Privacy</Link>
+              <Link to="/product">Product</Link>
+              <Link to="/expressions">Expressions</Link>
+              <Link to="/privacy">Privacy</Link>
             </div>
             <div>
-              <h4>Project</h4>
+              <h4>Company</h4>
               <Link to="/about">About</Link>
-              <Link to="/about#team">Team</Link>
               <Link to="/contact">Contact</Link>
+              <a href="mailto:malikabdullah0120@gmail.com">Email</a>
             </div>
             <div>
               <h4>Account</h4>
@@ -228,6 +232,7 @@ export function SiteLayout() {
   useSmoothScroll(true);
   return (
     <div className="site">
+      <GroupCurtain />
       <a href="#main" className="skip-link">Skip to content</a>
       <SiteNav />
       <main id="main"><Suspense fallback={<SiteSkeleton />}><AnimatedOutlet variant="site" /></Suspense></main>
@@ -271,6 +276,7 @@ export function AppShell() {
 
   return (
     <div className="app">
+      <GroupCurtain />
       <a href="#app-main" className="skip-link">Skip to content</a>
       <aside className="app-side">
         <Link to="/" className="app-side__brand" aria-label="FER home"><Logo /></Link>
@@ -328,6 +334,21 @@ export function AppShell() {
         ))}
       </nav>
     </div>
+  );
+}
+
+/** Curtain for moving between route groups (site ↔ auth ↔ app). */
+export function GroupCurtain() {
+  const reduce = useReducedMotion();
+  return reduce ? null : <Curtain />;
+}
+
+export function AuthGroup() {
+  return (
+    <>
+      <GroupCurtain />
+      <AnimatedOutlet variant="site" />
+    </>
   );
 }
 

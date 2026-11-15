@@ -28,14 +28,11 @@ export default function AdminLogin() {
   };
 
   return (
-    <AuthLayout panelTitle="Workspace administration." panelText="Manage accounts, review messages and see how people use FER — without ever seeing their camera.">
-      <span className="badge badge-signal">Admin</span>
-      <h1 style={{ marginTop: 14 }}>Administrator sign-in</h1>
-      <p className="auth-sub">Restricted to FER administrators.</p>
+    <AuthLayout heading="Administrator sign-in" sub="Restricted to FER administrators." panelTitle="Oversee every" panelText="Manage accounts, review messages and see how people use FER — without ever seeing their camera.">
       <form onSubmit={submit}>
         <div className="field">
           <label htmlFor="email">Admin email</label>
-          <input id="email" type="email" className="input" required autoComplete="username" autoFocus value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <input id="email" type="email" className="input" required autoComplete="username" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         </div>
         <div className="field">
           <label htmlFor="password">Password</label>

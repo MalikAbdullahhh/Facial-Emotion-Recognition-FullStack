@@ -134,7 +134,7 @@ function buildFeatures(P) {
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export default function PointFace({ emotion, auto = true, onEmotion, interval = 3200, labels = true, className = '', zoom = 1 }) {
+export default function PointFace({ emotion, auto = true, onEmotion, interval = 3200, labels = true, className = '', zoom = 1, intro = false }) {
   const canvasRef = useRef(null);
   const state = useRef({ emotion: emotion || 'happy', P: { ...PARAMS[emotion || 'happy'] }, color: rgb(HEX[emotion || 'happy']) });
   const cb = useRef(onEmotion);
@@ -150,6 +150,9 @@ export default function PointFace({ emotion, auto = true, onEmotion, interval = 
     const ctx = canvas.getContext('2d');
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const surface = buildSurface();
+    // Intro: every point starts scattered and flies into place with a random delay.
+    const scatter = surface.map(() => [Math.random(), Math.random(), Math.random() * 0.55]);
+    const introDur = intro && !reduce ? 1.7 : 0;
     const st = state.current;
     let w = 0; let h = 0; let dpr = 1;
     let raf = 0; let visible = true; let running = true;
@@ -218,20 +221,30 @@ export default function PointFace({ emotion, auto = true, onEmotion, interval = 
       const [cr, cg, cb2] = st.color.map(Math.round);
 
       ctx.clearRect(0, 0, w, h);
+      const prog = introDur ? Math.min(1, Math.max(0, (t - 0.15) / introDur)) : 1;
+      const featA = introDur ? Math.min(1, Math.max(0, (prog - 0.62) / 0.38)) : 1;
 
       // surface points
       for (let i = 0; i < surface.length; i++) {
         const p = surface[i];
         let [sx, sy, sz] = project(p, cyw, syw, cp, sp, scale, cx, cyy);
+        if (prog < 1) {
+          const sc = scatter[i];
+          const k2 = Math.min(1, Math.max(0, (prog * 1.55 - sc[2]) / 1));
+          const e = 1 - (1 - k2) ** 3;
+          sx = sc[0] * w + (sx - sc[0] * w) * e;
+          sy = sc[1] * h + (sy - sc[1] * h) * e;
+        }
         if (mouse) {
           const dx = sx - mouse.x; const dy = sy - mouse.y; const d = Math.hypot(dx, dy);
           if (d < 90 && d > 0.1) { const f = (1 - d / 90) ** 2 * 18; sx += (dx / d) * f; sy += (dy / d) * f; }
         }
         const depth = (sz + 0.4) / 1.4;
         const band = Math.max(0, 1 - Math.abs(p[1] - scanY) / 0.09);
-        const a = Math.max(0.05, Math.min(0.75, 0.12 + depth * 0.4 + band * 0.5));
-        const size = 0.7 + depth * 1.05 + band * 0.6;
-        ctx.fillStyle = band > 0.05 ? `rgba(${cr},${cg},${cb2},${a})` : `rgba(236,235,230,${a})`;
+        const boost = prog < 1 ? (1 - prog) * 0.55 : 0;
+        const a = Math.max(0.05, Math.min(0.9, 0.12 + depth * 0.4 + band * 0.5 + boost));
+        const size = 0.7 + depth * 1.05 + band * 0.6 + boost * 1.6;
+        ctx.fillStyle = band > 0.05 || (boost > 0 && i % 3 === 0) ? `rgba(${cr},${cg},${cb2},${a})` : `rgba(236,235,230,${a})`;
         ctx.fillRect(sx - size / 2, sy - size / 2, size, size);
       }
 
@@ -240,18 +253,18 @@ export default function PointFace({ emotion, auto = true, onEmotion, interval = 
       const anchors = {};
       feats.forEach((f, fi) => {
         const pr = f.pts.map((p) => project(p, cyw, syw, cp, sp, scale, cx, cyy));
-        ctx.strokeStyle = `rgba(${cr},${cg},${cb2},${0.45 * (f.alpha ?? 1)})`;
+        ctx.strokeStyle = `rgba(${cr},${cg},${cb2},${0.45 * (f.alpha ?? 1) * featA})`;
         ctx.lineWidth = f.w;
         ctx.beginPath();
         pr.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
         ctx.stroke();
-        ctx.fillStyle = `rgba(${cr},${cg},${cb2},${0.95 * (f.alpha ?? 1)})`;
+        ctx.fillStyle = `rgba(${cr},${cg},${cb2},${0.95 * (f.alpha ?? 1) * featA})`;
         pr.forEach((q, i) => { if (i % 2 === 0) { const s = 1.6 + f.w * 0.6; ctx.fillRect(q[0] - s / 2, q[1] - s / 2, s, s); } });
         if (f.tag) anchors[f.tag] = pr[pr.length - 1];
       });
 
       // action-unit labels
-      if (labels && w > 640) {
+      if (labels && w > 640 && featA >= 1) {
         const aus = ACTION_UNITS[st.emotion] || [];
         const items = aus.length ? [aus[0], aus[aus.length - 1]] : [['—', 'No dominant action units']];
         ctx.font = '500 11px "Geist Mono Variable", ui-monospace, monospace';
@@ -298,7 +311,7 @@ export default function PointFace({ emotion, auto = true, onEmotion, interval = 
       document.removeEventListener('pointerleave', onLeave);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [auto, controlled, interval, labels, zoom]);
+  }, [auto, controlled, interval, labels, zoom, intro]);
 
   return <canvas ref={canvasRef} className={`pointface ${className}`} aria-hidden="true" />;
 }
