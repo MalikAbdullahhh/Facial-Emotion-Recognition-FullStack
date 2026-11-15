@@ -15,6 +15,8 @@ app.use(cors({
     'https://checkmyemotion.vercel.app',
     'http://localhost:3000',
     process.env.CLIENT_URL,
+    // Extra exact origins, comma-separated (custom domain alongside the workers.dev address).
+    ...(process.env.EXTRA_CORS_ORIGINS || '').split(',').map((o) => o.trim()),
   ].filter(Boolean),
   credentials: true,
 }));
