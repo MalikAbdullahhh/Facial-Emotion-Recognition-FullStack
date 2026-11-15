@@ -1,288 +1,226 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { FiArrowLeft, FiTrash2, FiEye, FiImage, FiTrendingUp, FiSmile } from 'react-icons/fi';
-import EmotionReport from '../components/EmotionReport';
-import ScrollAnimation from '../components/ScrollAnimation';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { FiAlertCircle, FiDownload, FiImage, FiPlus, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
 import api from '../utils/api';
-import './ImageAnalyses.css';
+import { EMOTIONS, emotionMeta, normaliseScores, toKey } from '../lib/emotions';
+import { downloadReport } from '../lib/report';
+import { formatBytes } from '../lib/image';
+import { useDocTitle } from '../lib/hooks';
+import { PageHeader } from '../components/layout';
+import { Drawer, EASE, EmotionBars, EmotionChip, FaceBox, Modal } from '../components/ui';
+import './Dashboard.css';
+import './EmotionDetection.css';
+import './History.css';
 
-const ImageAnalyses = () => {
-  const navigate = useNavigate();
-  const [analyses, setAnalyses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [selectedAnalysis, setSelectedAnalysis] = useState(null);
-  const [showReport, setShowReport] = useState(false);
+const PAGE = 24;
+
+function Detail({ item, onDelete }) {
+  const [frame, setFrame] = useState(null);
+  const meta = emotionMeta(item.emotion);
+  const scores = normaliseScores(item.allEmotions);
+  return (
+    <>
+      <div className="detail-img">
+        <div className="detail-img__inner" style={frame ? { aspectRatio: `${frame.w} / ${frame.h}`, width: `min(100%, calc(50vh * ${frame.w / frame.h}))` } : undefined}>
+          <img src={item.imageUrl} alt={item.fileName || 'Analysed photo'} onLoad={(e) => setFrame({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
+          {frame && item.bbox?.length === 4 && <FaceBox box={item.bbox} frame={frame} emotion={item.emotion} confidence={item.confidence} />}
+        </div>
+      </div>
+      <div className="result__head" style={{ '--c': meta.color }}>
+        <div><span className="stat-label">Dominant expression</span><strong>{meta.label}</strong></div>
+        <span className="num result__conf">{Math.round(item.confidence * 100)}<small>%</small></span>
+      </div>
+      <EmotionBars scores={scores} />
+      <dl className="kv">
+        <div><dt>Analysed</dt><dd>{new Date(item.timestamp).toLocaleString()}</dd></div>
+        <div><dt>File</dt><dd>{item.fileName || '—'}</dd></div>
+        {item.fileSize > 0 && <div><dt>Original size</dt><dd>{formatBytes(item.fileSize)}</dd></div>}
+      </dl>
+      <div className="detail-actions">
+        <button type="button" className="btn btn-primary" onClick={() => downloadReport({ image: item.imageUrl, emotion: item.emotion, confidence: item.confidence, allEmotions: item.allEmotions, bbox: item.bbox, date: item.timestamp })}><FiDownload /> Download report</button>
+        <button type="button" className="btn btn-danger" onClick={onDelete}><FiTrash2 /> Delete</button>
+      </div>
+    </>
+  );
+}
+
+export default function ImageAnalyses() {
+  useDocTitle('History');
+  const [params, setParams] = useSearchParams();
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
   const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [more, setMore] = useState(false);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [sort, setSort] = useState('new');
+  const [confirm, setConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const openId = params.get('open');
 
-  const fetchAnalyses = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      const response = await api.get('/emotions/image-analyses');
-      if (response.data.success) {
-        setAnalyses(response.data.analyses || []);
-      }
-    } catch (err) {
-      setError('Failed to load image analyses');
-      console.error('Error fetching analyses:', err);
+      const [a, s] = await Promise.all([api.get(`/emotions/image-analyses?limit=${PAGE}&skip=0`), api.get('/emotions/image-analyses/stats')]);
+      setItems(a.data.analyses || []);
+      setTotal(a.data.total || 0);
+      setStats(s.data);
+    } catch (e) {
+      setError('Your history couldn’t be loaded. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
   }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const fetchStats = useCallback(async () => {
+  const loadMore = async () => {
+    setMore(true);
     try {
-      const response = await api.get('/emotions/image-analyses/stats');
-      if (response.data.success) {
-        setStats(response.data);
-      }
-    } catch (err) {
-      console.error('Error fetching stats:', err);
-    }
-  }, []);
+      const { data } = await api.get(`/emotions/image-analyses?limit=${PAGE}&skip=${items.length}`);
+      setItems((l) => [...l, ...(data.analyses || [])]);
+    } finally { setMore(false); }
+  };
 
+  // Deep link (?open=id) for an item not in the first page
   useEffect(() => {
-    fetchAnalyses();
-    fetchStats();
-  }, [fetchAnalyses, fetchStats]);
+    if (!openId || loading || items.some((i) => i._id === openId)) return;
+    api.get(`/emotions/image-analyses?limit=200`).then(({ data }) => setItems(data.analyses || [])).catch(() => {});
+  }, [openId, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this analysis?')) return;
+  const counts = useMemo(() => {
+    const c = {};
+    Object.entries(stats?.emotionStats || {}).forEach(([k, v]) => { const key = toKey(k); c[key] = (c[key] || 0) + v.count; });
+    return c;
+  }, [stats]);
+  const topKey = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
 
+  const shown = useMemo(() => {
+    let l = filter === 'all' ? items : items.filter((i) => toKey(i.emotion) === filter);
+    if (sort === 'conf') l = [...l].sort((a, b) => b.confidence - a.confidence);
+    if (sort === 'old') l = [...l].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
+    return l;
+  }, [items, filter, sort]);
+
+  const open = items.find((i) => i._id === openId);
+  const setOpen = (id) => setParams(id ? { open: id } : {}, { replace: !id });
+
+  const doDelete = async () => {
+    if (!confirm) return;
+    setDeleting(true);
     try {
-      await api.delete(`/emotions/image-analyses/${id}`);
-      setAnalyses(prev => prev.filter(a => a._id !== id));
-      fetchStats();
-    } catch (err) {
-      setError('Failed to delete analysis');
-      console.error('Error deleting analysis:', err);
-    }
+      await api.delete(`/emotions/image-analyses/${confirm._id}`);
+      setItems((l) => l.filter((i) => i._id !== confirm._id));
+      setTotal((t) => t - 1);
+      setCounts(confirm);
+      if (openId === confirm._id) setOpen(null);
+      setConfirm(null);
+    } catch (e) {
+      setError('That analysis couldn’t be deleted. Please try again.');
+      setConfirm(null);
+    } finally { setDeleting(false); }
   };
-
-  const handleViewReport = (analysis) => {
-    setSelectedAnalysis({
-      id: analysis._id,
-      success: true,
-      emotion: analysis.emotion,
-      confidence: analysis.confidence,
-      all_emotions: analysis.allEmotions || {},
-      bbox: analysis.bbox || null
-    });
-    setShowReport(true);
-  };
-
-  const getEmotionEmoji = (emotion) => {
-    const emojis = {
-      happy: '😊',
-      sad: '😢',
-      angry: '😠',
-      surprise: '😲',
-      surprised: '😲',
-      neutral: '😐',
-      fear: '😨',
-      disgust: '🤢',
-      contempt: '😤',
-      Anger: '😠',
-      Happy: '😊',
-      Sad: '😢',
-      Surprise: '😲',
-      Neutral: '😐',
-      Fear: '😨',
-      Disgust: '🤢',
-      Contempt: '😤'
-    };
-    return emojis[emotion] || '😐';
-  };
-
-  const getEmotionColor = (emotion) => {
-    const colors = {
-      happy: '#22c55e',
-      Happy: '#22c55e',
-      sad: '#3b82f6',
-      Sad: '#3b82f6',
-      angry: '#ef4444',
-      Anger: '#ef4444',
-      surprise: '#f59e0b',
-      Surprise: '#f59e0b',
-      neutral: '#6b7280',
-      Neutral: '#6b7280',
-      fear: '#8b5cf6',
-      Fear: '#8b5cf6',
-      disgust: '#ec4899',
-      Disgust: '#ec4899',
-      contempt: '#f97316',
-      Contempt: '#f97316'
-    };
-    return colors[emotion] || '#6b7280';
-  };
-
-  if (loading) {
-    return (
-      <div className="image-analyses-page">
-        <div className="container">
-          <div className="loading-state">
-            <div className="spinner"></div>
-            <p>Loading image analyses...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const setCounts = (removed) => setStats((s) => {
+    if (!s) return s;
+    const es = { ...s.emotionStats };
+    const k = Object.keys(es).find((x) => toKey(x) === toKey(removed.emotion));
+    if (k) es[k] = { ...es[k], count: Math.max(0, es[k].count - 1) };
+    return { ...s, totalAnalyses: Math.max(0, (s.totalAnalyses || 1) - 1), emotionStats: es };
+  });
 
   return (
-    <div className="image-analyses-page">
-      <div className="container">
-        <ScrollAnimation direction="up" className="analyses-header">
-          <button className="back-button" onClick={() => navigate('/dashboard')}>
-            <FiArrowLeft /> Back to Dashboard
-          </button>
-          <div className="header-content">
-            <h1 className="page-title">
-              <FiImage /> Image Analyses Dashboard
-            </h1>
-            <p className="page-subtitle">
-              View and manage all your image emotion analyses
-            </p>
-          </div>
-        </ScrollAnimation>
+    <div>
+      <PageHeader
+        title="History"
+        description="Every photo you’ve analysed, with its full result. Open one to see the breakdown or download a report."
+        actions={<Link to="/emotion-detection?mode=photo" className="btn btn-primary"><FiPlus /> Analyse photos</Link>}
+      />
 
-        {error && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="error-message"
-          >
-            {error}
-          </motion.div>
-        )}
+      <section className="card kpis kpis--3">
+        <div className="stat kpi"><span className="stat-label">Photos analysed</span>{loading ? <span className="skeleton" style={{ height: 34, width: 60 }} /> : <span className="stat-value num">{stats?.totalAnalyses ?? total}</span>}</div>
+        <div className="stat kpi"><span className="stat-label">Average confidence</span>{loading ? <span className="skeleton" style={{ height: 34, width: 80 }} /> : <span className="stat-value num">{Math.round((stats?.avgConfidence || 0) * 100)}%</span>}</div>
+        <div className="stat kpi"><span className="stat-label">Most common</span>{loading ? <span className="skeleton" style={{ height: 34, width: 90 }} /> : <span className="stat-value" style={{ color: topKey ? emotionMeta(topKey).color : 'var(--faint)' }}>{topKey ? emotionMeta(topKey).label : '—'}</span>}</div>
+      </section>
 
-        {/* Statistics */}
-        {stats && (
-          <ScrollAnimation className="stats-section">
-            <h2 className="section-title">
-              <FiTrendingUp /> Statistics
-            </h2>
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-value">{stats.totalAnalyses || 0}</div>
-                <div className="stat-label">Total Analyses</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-value">{(stats.avgConfidence * 100).toFixed(1)}%</div>
-                <div className="stat-label">Avg Confidence</div>
-              </div>
-              {stats.emotionStats && Object.entries(stats.emotionStats).map(([emotion, data]) => (
-                <div key={emotion} className="stat-card emotion-stat">
-                  <div className="stat-emoji">{getEmotionEmoji(emotion)}</div>
-                  <div className="stat-value">{data.count}</div>
-                  <div className="stat-label">{emotion}</div>
-                  <div className="stat-percentage">{data.percentage}%</div>
-                </div>
-              ))}
-            </div>
-          </ScrollAnimation>
-        )}
+      {error && <div className="alert alert-error" style={{ marginBottom: 16 }}><FiAlertCircle /><span style={{ flex: 1 }}>{error}</span><button type="button" className="btn btn-outline btn-sm" onClick={load}><FiRefreshCw />Retry</button></div>}
 
-        {/* Analyses Grid */}
-        {analyses.length === 0 ? (
-          <ScrollAnimation className="empty-state">
-            <FiImage size={64} />
-            <h3>No Image Analyses Yet</h3>
-            <p>Upload and analyze images to see them here</p>
-            <button className="btn btn-primary" onClick={() => navigate('/emotion-detection')}>
-              Go to Emotion Detection
-            </button>
-          </ScrollAnimation>
-        ) : (
-          <div className="analyses-grid">
-            {analyses.map((analysis, index) => (
-              <ScrollAnimation
-                key={analysis._id}
-                delay={index * 0.05}
-                className="analysis-card"
-              >
-                <div className="analysis-image-wrapper">
-                  <img 
-                    src={analysis.imageUrl} 
-                    alt="Analysis" 
-                    className="analysis-image"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                      e.target.nextSibling.style.display = 'flex';
-                    }}
-                  />
-                  <div className="image-fallback" style={{ display: 'none' }}>
-                    <FiImage />
-                  </div>
-                  {analysis.bbox && (
-                    <div
-                      className="analysis-bbox"
-                      style={{
-                        left: `${(analysis.bbox[0] / 100) * 100}%`,
-                        top: `${(analysis.bbox[1] / 100) * 100}%`,
-                        width: `${((analysis.bbox[2] - analysis.bbox[0]) / 100) * 100}%`,
-                        height: `${((analysis.bbox[3] - analysis.bbox[1]) / 100) * 100}%`
-                      }}
-                    />
-                  )}
-                  <div 
-                    className="analysis-emotion-badge"
-                    style={{ backgroundColor: getEmotionColor(analysis.emotion) }}
-                  >
-                    {getEmotionEmoji(analysis.emotion)}
-                  </div>
-                </div>
-                <div className="analysis-info">
-                  <h3 className="analysis-emotion">{analysis.emotion}</h3>
-                  <div className="analysis-confidence">
-                    <span>Confidence: </span>
-                    <strong>{(analysis.confidence * 100).toFixed(1)}%</strong>
-                  </div>
-                  {analysis.fileName && (
-                    <div className="analysis-filename">{analysis.fileName}</div>
-                  )}
-                  <div className="analysis-date">
-                    {new Date(analysis.timestamp).toLocaleString()}
-                  </div>
-                </div>
-                <div className="analysis-actions">
-                  <button
-                    className="action-btn view-btn"
-                    onClick={() => handleViewReport(analysis)}
-                  >
-                    <FiEye /> View Report
-                  </button>
-                  <button
-                    className="action-btn delete-btn"
-                    onClick={() => handleDelete(analysis._id)}
-                  >
-                    <FiTrash2 /> Delete
-                  </button>
-                </div>
-              </ScrollAnimation>
+      {(items.length > 0 || loading) && (
+        <div className="hist-toolbar">
+          <div className="chips" role="tablist" aria-label="Filter by expression">
+            <button type="button" role="tab" aria-selected={filter === 'all'} className={`chip ${filter === 'all' ? 'is-on' : ''}`} onClick={() => setFilter('all')}>All <span className="num">{stats?.totalAnalyses ?? total}</span></button>
+            {EMOTIONS.filter((e) => counts[e.key]).map((e) => (
+              <button key={e.key} type="button" role="tab" aria-selected={filter === e.key} className={`chip ${filter === e.key ? 'is-on' : ''}`} style={{ '--c': e.color }} onClick={() => setFilter(e.key)}>
+                <span className="swatch" />{e.label} <span className="num">{counts[e.key]}</span>
+              </button>
             ))}
           </div>
-        )}
+          <select className="input hist-sort" value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort">
+            <option value="new">Newest first</option>
+            <option value="old">Oldest first</option>
+            <option value="conf">Highest confidence</option>
+          </select>
+        </div>
+      )}
 
-        {/* Report Modal */}
-        {showReport && selectedAnalysis && (() => {
-          const analysis = analyses.find(a => a._id === selectedAnalysis.id);
-          return analysis ? (
-            <EmotionReport
-              result={selectedAnalysis}
-              image={analysis.imageUrl}
-              onClose={() => {
-                setShowReport(false);
-                setSelectedAnalysis(null);
-              }}
-            />
-          ) : null;
-        })()}
-      </div>
+      {loading ? (
+        <div className="hist-grid">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="skeleton" style={{ aspectRatio: '4 / 5', borderRadius: 18 }} />)}</div>
+      ) : items.length === 0 ? (
+        <section className="card">
+          <div className="empty" style={{ padding: '72px 20px' }}>
+            <span className="empty-icon"><FiImage /></span>
+            <h3>No photo analyses yet</h3>
+            <p>Analyse a photo and it will appear here with its full breakdown, ready to compare or export.</p>
+            <Link to="/emotion-detection?mode=photo" className="btn btn-primary"><FiPlus /> Analyse your first photo</Link>
+          </div>
+        </section>
+      ) : (
+        <>
+          <motion.div layout className="hist-grid">
+            <AnimatePresence initial={false}>
+              {shown.map((it) => (
+                <motion.button
+                  layout
+                  key={it._id}
+                  type="button"
+                  className="hist-card"
+                  onClick={() => setOpen(it._id)}
+                  initial={{ opacity: 0, scale: 0.97 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.3, ease: EASE }}
+                  style={{ '--c': emotionMeta(it.emotion).color }}
+                >
+                  <span className="hist-card__img"><img src={it.imageUrl} alt="" loading="lazy" /></span>
+                  <span className="hist-card__body">
+                    <EmotionChip emotion={it.emotion} confidence={it.confidence} />
+                    <span className="hist-card__meta"><span className="hist-card__name">{it.fileName || 'Photo'}</span><span className="faint">{new Date(it.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span></span>
+                  </span>
+                </motion.button>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+          {shown.length === 0 && <p className="muted" style={{ padding: '24px 0' }}>No photos with this expression in the loaded results.</p>}
+          {items.length < total && (
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24 }}>
+              <button type="button" className="btn btn-outline" onClick={loadMore} disabled={more}>{more ? <><span className="spinner" />Loading…</> : `Load more (${total - items.length})`}</button>
+            </div>
+          )}
+        </>
+      )}
+
+      <Drawer open={!!open} onClose={() => setOpen(null)} title="Analysis">
+        {open && <Detail item={open} onDelete={() => setConfirm(open)} />}
+      </Drawer>
+
+      <Modal open={!!confirm} onClose={() => !deleting && setConfirm(null)} title="Delete this analysis?">
+        <p className="muted">The photo and its result will be permanently removed from your history. This can’t be undone.</p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 22 }}>
+          <button type="button" className="btn btn-outline" onClick={() => setConfirm(null)} disabled={deleting}>Cancel</button>
+          <button type="button" className="btn btn-danger" onClick={doDelete} disabled={deleting}>{deleting ? <><span className="spinner" />Deleting…</> : <><FiTrash2 /> Delete</>}</button>
+        </div>
+      </Modal>
     </div>
   );
-};
-
-export default ImageAnalyses;
-
+}

@@ -1,61 +1,36 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-const ThemeContext = createContext();
+const ThemeContext = createContext({ theme: 'light', preference: 'system', toggleTheme: () => {}, setPreference: () => {} });
+export const useTheme = () => useContext(ThemeContext);
 
-export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within ThemeProvider');
-  }
-  return context;
+const systemTheme = () => (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const readPref = () => {
+  try { const t = localStorage.getItem('theme'); return t === 'light' || t === 'dark' ? t : 'system'; } catch (e) { return 'system'; }
 };
 
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState(() => {
-    let savedTheme = null;
-    try { savedTheme = localStorage.getItem('theme'); } catch (e) {}
-    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
-    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  });
+  const [preference, setPref] = useState(readPref);
+  const [system, setSystem] = useState(systemTheme);
+  const theme = preference === 'system' ? system : preference;
 
   useEffect(() => {
-    try {
-      localStorage.setItem('theme', theme);
-      document.documentElement.setAttribute('data-theme', theme);
-      
-      // Pure black and white theme
-      if (theme === 'dark') {
-        document.documentElement.style.setProperty('--bg-primary', '#000000');
-        document.documentElement.style.setProperty('--bg-secondary', '#0a0a0a');
-        document.documentElement.style.setProperty('--bg-tertiary', '#141414');
-        document.documentElement.style.setProperty('--text-primary', '#ffffff');
-        document.documentElement.style.setProperty('--text-secondary', '#b0b0b0');
-        document.documentElement.style.setProperty('--accent', '#ffffff');
-        document.documentElement.style.setProperty('--border', '#2a2a2a');
-        document.documentElement.style.setProperty('--shadow', 'rgba(255, 255, 255, 0.1)');
-      } else {
-        document.documentElement.style.setProperty('--bg-primary', '#ffffff');
-        document.documentElement.style.setProperty('--bg-secondary', '#fafafa');
-        document.documentElement.style.setProperty('--bg-tertiary', '#f0f0f0');
-        document.documentElement.style.setProperty('--text-primary', '#000000');
-        document.documentElement.style.setProperty('--text-secondary', '#4a4a4a');
-        document.documentElement.style.setProperty('--accent', '#000000');
-        document.documentElement.style.setProperty('--border', '#d0d0d0');
-        document.documentElement.style.setProperty('--shadow', 'rgba(0, 0, 0, 0.1)');
-      }
-    } catch (error) {
-      console.error('Error setting theme:', error);
-    }
+    if (!window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const on = () => setSystem(mq.matches ? 'dark' : 'light');
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', theme === 'dark' ? '#0d0e10' : '#f4f3ef'));
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
-  };
+  const setPreference = useCallback((p) => {
+    setPref(p);
+    try { if (p === 'system') localStorage.removeItem('theme'); else localStorage.setItem('theme', p); } catch (e) { /* private mode */ }
+  }, []);
+  const toggleTheme = useCallback(() => setPreference(theme === 'dark' ? 'light' : 'dark'), [theme, setPreference]);
 
-  return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext.Provider value={{ theme, preference, toggleTheme, setPreference }}>{children}</ThemeContext.Provider>;
 };
-

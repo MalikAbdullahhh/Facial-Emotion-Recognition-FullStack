@@ -13,7 +13,6 @@ router.use(trackActivity);
 router.get('/profile', async (req, res) => {
   try {
     const user = await User.findById(req.user._id)
-      .select('+password') // Include password for admin view
       .lean();
     
     // Format time on site
@@ -34,7 +33,6 @@ router.get('/profile', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        password: user.password, // Hashed password
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         lastLogin: user.lastLogin,

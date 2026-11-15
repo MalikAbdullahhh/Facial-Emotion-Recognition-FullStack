@@ -3,7 +3,10 @@ const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
 const EmotionRecord = require('../models/EmotionRecord');
 const ImageAnalysis = require('../models/ImageAnalysis');
+const { trackActivity } = require('../middleware/trackActivity');
+
 const router = express.Router();
+router.use(protect, trackActivity);
 
 // @route   POST /api/emotions/record
 // @desc    Save an emotion detection record

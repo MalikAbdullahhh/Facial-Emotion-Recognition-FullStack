@@ -1,38 +1,22 @@
 const User = require('../models/User');
 
-// Track user activity and session time
+// Track user activity and time on site.
+// Throttled to one write per minute per user; time is credited from the gap since the
+// last activity (gaps over 10 minutes count as a new visit and add nothing).
 exports.trackActivity = async (req, res, next) => {
   if (req.user) {
     try {
-      const user = await User.findById(req.user._id);
-      
-      // Update last activity
-      user.lastActivity = new Date();
-      
-      // Ensure user is marked as online if they have an active session
-      if (!user.isOnline && user.currentSessionStart) {
-        user.isOnline = true;
-      }
-      
-      // If user is online, update current session duration and total time
-      if (user.isOnline && user.currentSessionStart) {
-        const currentSessionDuration = Math.floor(
-          (new Date() - user.currentSessionStart) / 1000
+      const now = Date.now();
+      const last = req.user.lastActivity ? new Date(req.user.lastActivity).getTime() : 0;
+      if (now - last >= 60 * 1000) {
+        const gap = now - last;
+        const credit = last && gap < 10 * 60 * 1000 ? Math.round(gap / 1000) : 0;
+        await User.updateOne(
+          { _id: req.user._id },
+          { $set: { lastActivity: new Date(now), isOnline: Boolean(req.user.currentSessionStart) || req.user.isOnline }, $inc: { totalTimeOnSite: credit } }
         );
-        // Update total time incrementally (every 30 seconds of activity)
-        const timeSinceLastUpdate = user.lastActivity && user.updatedAt 
-          ? Math.floor((new Date() - new Date(user.updatedAt)) / 1000)
-          : 0;
-        
-        if (timeSinceLastUpdate >= 30) {
-          // Add 30 seconds to total time
-          user.totalTimeOnSite = (user.totalTimeOnSite || 0) + 30;
-        }
       }
-      
-      await user.save();
     } catch (error) {
-      // Don't block the request if tracking fails
       console.error('Activity tracking error:', error);
     }
   }

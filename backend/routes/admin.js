@@ -78,7 +78,6 @@ router.get('/users', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        hashedPassword: user.password, // Always include hashed version
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         lastLogin: user.lastLogin,
@@ -190,7 +189,6 @@ router.get('/users/:id', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        hashedPassword: user.password, // Always include hashed version
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         lastLogin: user.lastLogin,
@@ -205,6 +203,87 @@ router.get('/users/:id', async (req, res) => {
         currentSessionStart: user.currentSessionStart
       }
     });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   GET /api/admin/check-online
+// @desc    Mark users with no activity for 15 minutes as offline
+router.get('/check-online', async (req, res) => {
+  try {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const stale = await User.find({ isOnline: true, $or: [{ lastActivity: { $lt: cutoff } }, { lastActivity: null }] });
+    for (const u of stale) {
+      await u.endSession();
+    }
+    res.json({ success: true, updated: stale.length });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   POST /api/admin/users
+// @desc    Create a user or admin
+router.post('/users', async (req, res) => {
+  try {
+    const { name, email, password, role = 'user' } = req.body || {};
+    if (!name || !email || !password) return res.status(400).json({ message: 'Name, email and password are required' });
+    if (String(password).length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    if (!['user', 'admin'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+    const exists = await User.findOne({ email: String(email).toLowerCase().trim() });
+    if (exists) return res.status(400).json({ message: 'A user with this email already exists' });
+    const user = await User.create({ name: String(name).trim(), email, password, role });
+    res.status(201).json({ success: true, user: { id: user._id, name: user.name, email: user.email, role: user.role, createdAt: user.createdAt } });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   PUT /api/admin/users/:id/role
+router.put('/users/:id/role', async (req, res) => {
+  try {
+    const { role } = req.body || {};
+    if (!['user', 'admin'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+    if (String(req.params.id) === String(req.user._id) && role !== 'admin') return res.status(400).json({ message: 'You can’t remove your own admin access' });
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.role = role;
+    await user.save();
+    res.json({ success: true, user: { id: user._id, role: user.role } });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   PUT /api/admin/users/:id/password
+router.put('/users/:id/password', async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (!password || String(password).length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters' });
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.password = password; // hashed by the model's pre-save hook
+    await user.save();
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   DELETE /api/admin/users/:id
+// @desc    Delete a user and all of their records
+router.delete('/users/:id', async (req, res) => {
+  try {
+    if (String(req.params.id) === String(req.user._id)) return res.status(400).json({ message: 'You can’t delete your own account' });
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    await Promise.all([
+      EmotionRecord.deleteMany({ user: user._id }),
+      ImageAnalysis.deleteMany({ user: user._id }),
+    ]);
+    await user.deleteOne();
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

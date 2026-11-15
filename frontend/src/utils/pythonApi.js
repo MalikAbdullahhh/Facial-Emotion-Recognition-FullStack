@@ -8,7 +8,6 @@
  * The exported functions keep the same names and response shapes as the old API client
  * so the pages that use them did not need to change.
  */
-import * as faceapi from '@vladmandic/face-api';
 
 const MODEL_URL = `${process.env.PUBLIC_URL || ''}/models`;
 
@@ -24,14 +23,21 @@ const LABELS = {
 };
 
 let loading = null;
+let faceapi = null;
+let detectorOptions = null;
 
 /** Loads the face detector + expression models once (≈0.5 MB, cached by the browser). */
 const loadModels = () => {
   if (!loading) {
-    loading = Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-    ]).catch((error) => {
+    // The library (~1 MB) is code-split and only fetched when detection is first needed.
+    loading = import('@vladmandic/face-api').then((mod) => {
+      faceapi = mod;
+      detectorOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.45 });
+      return Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      ]);
+    }).catch((error) => {
       loading = null;
       throw error;
     });
@@ -39,7 +45,6 @@ const loadModels = () => {
   return loading;
 };
 
-const detectorOptions = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.45 });
 
 const toImage = (src) =>
   new Promise((resolve, reject) => {
@@ -68,13 +73,13 @@ export const frameToBase64 = (canvas, quality = 0.5) => {
  * Predict emotion from an image (data URL or object URL).
  * Resolves to { success, emotion, confidence, all_emotions, bbox:[x1,y1,x2,y2] } or { success:false, error }.
  */
-export const predictEmotion = async (imageSrc /* , clientId */) => {
+export const predictEmotion = async (imageSrc, { inputSize } = {}) => {
   try {
     await loadModels();
     const img = await toImage(imageSrc);
-    const detection = await faceapi.detectSingleFace(img, detectorOptions).withFaceExpressions();
+    const detection = await faceapi.detectSingleFace(img, inputSize ? new faceapi.TinyFaceDetectorOptions({ inputSize, scoreThreshold: 0.4 }) : detectorOptions).withFaceExpressions();
     if (!detection) {
-      return { success: false, error: 'No face detected — face the camera with good, even light.', emotion: null, confidence: 0 };
+      return { success: false, error: 'No face found — face the camera in good, even light.', emotion: null, confidence: 0 };
     }
     const allEmotions = {};
     for (const [key, value] of Object.entries(detection.expressions)) {

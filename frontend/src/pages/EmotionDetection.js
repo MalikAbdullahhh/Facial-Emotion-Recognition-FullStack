@@ -1,1153 +1,398 @@
-import React, { useRef, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FiVideo, FiStopCircle, FiSmile, FiAlertCircle, FiArrowLeft, FiInfo, FiUpload, FiImage, FiX } from 'react-icons/fi';
-import { predictEmotion, frameToBase64, resetClientState, checkPythonApiHealth } from '../utils/pythonApi';
-import EmotionCharts from '../components/EmotionCharts';
-import EmotionReport from '../components/EmotionReport';
-import ScrollAnimation from '../components/ScrollAnimation';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import { FiAlertCircle, FiCamera, FiCheck, FiClock, FiDownload, FiImage, FiLink, FiPlay, FiSquare, FiTrash2, FiUploadCloud, FiX, FiZap } from 'react-icons/fi';
 import api from '../utils/api';
+import { EMOTIONS, emotionMeta, toApiLabel, topEmotion } from '../lib/emotions';
+import useFaceCamera, { analyseImage } from '../lib/useFaceCamera';
+import { fileToDataUrl, toDataUrl } from '../lib/image';
+import { downloadReport } from '../lib/report';
+import { useDocTitle } from '../lib/hooks';
+import { PageHeader } from '../components/layout';
+import { EASE, EmotionBars, EmotionChip, FaceBox, Segmented, Spectrum } from '../components/ui';
 import './EmotionDetection.css';
 
-const EmotionDetection = () => {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [emotion, setEmotion] = useState(null);
-  const [emotionHistory, setEmotionHistory] = useState([]);
-  const [error, setError] = useState('');
-  const [showInfo, setShowInfo] = useState(false);
-  const [apiStatus, setApiStatus] = useState('checking');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [sessionId] = useState(`session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
-  const [lastRecordTime, setLastRecordTime] = useState(0);
-  const streamRef = useRef(null);
-  const animationFrameRef = useRef(null);
-  const clientIdRef = useRef(`client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
-  const navigate = useNavigate();
+const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+const newSessionId = () => `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
-  const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('camera'); // 'camera' or 'image'
-  const [uploadedImages, setUploadedImages] = useState([]); // Array of { file, preview, result, id }
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [showReport, setShowReport] = useState(false);
-  const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const [imageUrl, setImageUrl] = useState('');
-  const [uploadMethod, setUploadMethod] = useState('file'); // 'file', 'url', 'paste'
-  const [isLoadingUrl, setIsLoadingUrl] = useState(false);
-  const fileInputRef = useRef(null);
-  const dropZoneRef = useRef(null);
+/* ── Live camera ─────────────────────────────────────────── */
+function LiveMode() {
+  const [reading, setReading] = useState(null);
+  const [noFace, setNoFace] = useState(false);
+  const [save, setSave] = useState(true);
+  const [session, setSession] = useState(null); // { id, start, counts, timeline, saved, failed, end }
+  const [now, setNow] = useState(Date.now());
+  const lastSave = useRef(0);
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  const sessionRef = useRef(null);
+  sessionRef.current = session;
+
+  const onResult = useCallback((r) => {
+    if (!r.ok) { setNoFace(true); return; }
+    setNoFace(false);
+    setReading(r);
+    setSession((s) => {
+      if (!s || s.end) return s;
+      const key = emotionMeta(r.emotion).key;
+      const counts = { ...s.counts, [key]: (s.counts[key] || 0) + 1 };
+      const timeline = [...s.timeline, key].slice(-90);
+      return { ...s, counts, timeline, total: s.total + 1 };
+    });
+    const t = Date.now();
+    const cur = sessionRef.current;
+    if (saveRef.current && cur && !cur.end && t - lastSave.current >= 1000) {
+      lastSave.current = t;
+      const sid = cur.id;
+      api.post('/emotions/record', { emotion: toApiLabel(r.emotion), confidence: r.confidence, sessionId: sid })
+        .then(() => setSession((x) => (x && x.id === sid ? { ...x, saved: x.saved + 1 } : x)))
+        .catch(() => setSession((x) => (x && x.id === sid ? { ...x, failed: x.failed + 1 } : x)));
+    }
+  }, []);
+
+  const cam = useFaceCamera({ onResult });
+  const live = cam.status === 'live';
 
   useEffect(() => {
-    const savedUser = JSON.parse(localStorage.getItem('user') || '{}');
-    if (!savedUser || !savedUser.id) {
-      navigate('/login');
-    } else {
-      setUser(savedUser);
-    }
+    if (!live) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [live]);
 
-    // Check Python API health on mount
-    checkPythonApiHealth().then((health) => {
-      if (health && health.model_status === 'loaded') {
-        setApiStatus('ready');
-      } else {
-        setApiStatus('error');
-        setError('The emotion model could not be loaded. Check your connection and refresh the page.');
-      }
-    });
-
-    // Store client ID for cleanup
-    const currentClientId = clientIdRef.current;
-
-    return () => {
-      stopStream();
-      // Reset client state when component unmounts
-      resetClientState(currentClientId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
-
-  const startStream = async () => {
-    try {
-      setError('');
-      // Optimize video constraints for better performance
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          width: { ideal: 320, max: 640 },
-          height: { ideal: 240, max: 480 },
-          facingMode: 'user',
-          frameRate: { ideal: 15, max: 30 } // Lower frame rate for better performance
-        }
-      });
-      
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', '');
-        videoRef.current.setAttribute('webkit-playsinline', '');
-        videoRef.current.play();
-        setIsStreaming(true);
-        startEmotionDetection();
-      }
-    } catch (err) {
-      setError('Unable to access camera. Please allow camera permissions and try again.');
-      console.error('Camera error:', err);
-    }
+  const start = async () => {
+    setReading(null);
+    setSession({ id: newSessionId(), start: Date.now(), counts: {}, timeline: [], total: 0, saved: 0, failed: 0, end: null });
+    await cam.start();
   };
-
-  const stopStream = async () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    setIsStreaming(false);
-    setEmotion(null);
-    // Reset client state when stopping
-    await resetClientState(clientIdRef.current);
+  const stop = () => {
+    cam.stop();
+    setSession((s) => (s ? { ...s, end: Date.now() } : s));
+    setNoFace(false);
   };
+  useEffect(() => { if (cam.status === 'error') setSession(null); }, [cam.status]);
 
-  const startEmotionDetection = () => {
-    let lastProcessTime = 0;
-    let lastDisplayUpdate = 0;
-    const PROCESS_INTERVAL = 300; // Process every 300ms (~3.3 FPS for API calls) - faster than before
-    const DISPLAY_UPDATE_INTERVAL = 33; // Update display at ~30 FPS for smooth video
-    const TARGET_WIDTH = 320; // Resize to smaller size for faster processing
-    const TARGET_HEIGHT = 240;
-
-    const detectEmotion = async () => {
-      if (!videoRef.current || !canvasRef.current || !isStreaming) return;
-
-      const now = Date.now();
-      const video = videoRef.current;
-      const displayCanvas = canvasRef.current;
-
-      // Update display canvas separately for smooth video (at higher FPS)
-      if (now - lastDisplayUpdate >= DISPLAY_UPDATE_INTERVAL) {
-        lastDisplayUpdate = now;
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-          const displayCtx = displayCanvas.getContext('2d');
-          // Only resize canvas if dimensions changed
-          if (displayCanvas.width !== video.videoWidth || displayCanvas.height !== video.videoHeight) {
-            displayCanvas.width = video.videoWidth;
-            displayCanvas.height = video.videoHeight;
-          }
-          displayCtx.save();
-          displayCtx.scale(-1, 1);
-          displayCtx.drawImage(video, -displayCanvas.width, 0, displayCanvas.width, displayCanvas.height);
-          displayCtx.restore();
-        }
-      }
-
-      // Process frame for emotion detection at specified interval
-      const timeSinceLastProcess = now - lastProcessTime;
-      if (timeSinceLastProcess >= PROCESS_INTERVAL && !isProcessing) {
-        lastProcessTime = now;
-        setIsProcessing(true);
-
-        // Process in next tick to avoid blocking display updates
-        setTimeout(async () => {
-          try {
-            // Check if video is ready
-            if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-              setIsProcessing(false);
-              return;
-            }
-
-            // Create a temporary canvas for processing (smaller size = faster)
-            const processCanvas = document.createElement('canvas');
-            processCanvas.width = TARGET_WIDTH;
-            processCanvas.height = TARGET_HEIGHT;
-            const processCtx = processCanvas.getContext('2d', { willReadFrequently: false });
-
-            // Draw video to processing canvas (resized and flipped)
-            processCtx.save();
-            processCtx.scale(-1, 1);
-            processCtx.drawImage(video, -TARGET_WIDTH, 0, TARGET_WIDTH, TARGET_HEIGHT);
-            processCtx.restore();
-
-            // Convert processing canvas to base64 with lower quality for faster transfer
-            const imageBase64 = processCanvas.toDataURL('image/jpeg', 0.5); // Lower quality = smaller file
-            
-            if (imageBase64) {
-              // Send to Python API for emotion detection
-              const result = await predictEmotion(imageBase64, clientIdRef.current);
-              
-              if (result.success && result.emotion) {
-                const newEmotion = {
-                  emotion: result.emotion.toLowerCase(),
-                  confidence: result.confidence,
-                  allEmotions: result.all_emotions || {},
-                  timestamp: new Date()
-                };
-
-                setEmotion(newEmotion);
-                setEmotionHistory(prev => [newEmotion, ...prev].slice(0, 10));
-                setError(''); // Clear any previous errors
-
-                // Save emotion record every second
-                const recordNow = Date.now();
-                if (recordNow - lastRecordTime >= 1000) {
-                  setLastRecordTime(recordNow);
-                  saveEmotionRecord(result.emotion, result.confidence);
-                }
-              } else if (result.error) {
-                // No face detected - this is normal, don't show as error
-                if (result.error !== 'No face detected') {
-                  setError(result.error);
-                }
-              }
-            }
-          } catch (err) {
-            console.error('Error in emotion detection:', err);
-            // Error is already handled in predictEmotion function
-            if (err.response) {
-              // API responded with error
-              setError(err.response.data?.error || 'Error detecting emotion');
-            } else if (!err.message?.includes('connect')) {
-              // Only show non-connection errors
-              setError(err.message || 'Error detecting emotion');
-            }
-          } finally {
-            setIsProcessing(false);
-          }
-        }, 0);
-      }
-
-      // Continue animation loop
-      animationFrameRef.current = requestAnimationFrame(detectEmotion);
-    };
-
-    detectEmotion();
-  };
-
-  useEffect(() => {
-    if (isStreaming) {
-      startEmotionDetection();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isStreaming]);
-
-  const getEmotionEmoji = (emotion) => {
-    const emojis = {
-      happy: '😊',
-      sad: '😢',
-      angry: '😠',
-      surprise: '😲',
-      surprised: '😲',
-      neutral: '😐',
-      fear: '😨',
-      disgust: '🤢',
-      contempt: '😤'
-    };
-    return emojis[emotion.toLowerCase()] || '😐';
-  };
-
-  const getEmotionColor = (emotion) => {
-    const colors = {
-      happy: '#22c55e',
-      sad: '#3b82f6',
-      angry: '#ef4444',
-      surprise: '#f59e0b',
-      surprised: '#f59e0b',
-      neutral: '#6b7280',
-      fear: '#8b5cf6',
-      disgust: '#ec4899',
-      contempt: '#f97316'
-    };
-    return colors[emotion.toLowerCase()] || '#6b7280';
-  };
-
-  const saveEmotionRecord = async (emotion, confidence) => {
-    try {
-      // Capitalize first letter to match backend enum
-      const emotionCapitalized = emotion.charAt(0).toUpperCase() + emotion.slice(1);
-      
-      await api.post('/emotions/record', {
-        emotion: emotionCapitalized,
-        confidence: confidence,
-        sessionId: sessionId
-      });
-    } catch (error) {
-      // Silently fail - don't interrupt user experience
-      console.error('Error saving emotion record:', error);
-    }
-  };
-
-  const processFiles = (files) => {
-    const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-    if (validFiles.length === 0) {
-      setError('Please upload valid image files');
-      return;
-    }
-
-    const newImages = validFiles.map((file, index) => {
-      const id = `img_${Date.now()}_${index}`;
-      return {
-        id,
-        file,
-        preview: null,
-        result: null,
-        processing: false,
-        source: 'file'
-      };
-    });
-
-    // Load previews
-    newImages.forEach((imgObj) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setUploadedImages(prev => {
-          const updated = [...prev];
-          const foundIndex = updated.findIndex(img => img.id === imgObj.id);
-          if (foundIndex !== -1) {
-            updated[foundIndex] = { ...updated[foundIndex], preview: reader.result };
-          }
-          return updated;
-        });
-      };
-      reader.readAsDataURL(imgObj.file);
-    });
-
-    setUploadedImages(prev => {
-      const updated = [...prev, ...newImages];
-      setCurrentImageIndex(prev.length); // Set to first new image
-      return updated;
-    });
-    
-    setError('');
-  };
-
-  const handleImageUpload = (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    processFiles(files);
-    
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = e.dataTransfer.files;
-    if (files && files.length > 0) {
-      processFiles(files);
-    }
-  };
-
-  const handlePaste = async (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'));
-    if (imageItems.length === 0) return;
-
-    e.preventDefault();
-    
-    const files = imageItems.map(item => item.getAsFile()).filter(Boolean);
-    if (files.length > 0) {
-      processFiles(files);
-    }
-  };
-
-  const handleUrlSubmit = async () => {
-    if (!imageUrl.trim()) {
-      setError('Please enter a valid image URL');
-      return;
-    }
-
-    setIsLoadingUrl(true);
-    setError('');
-
-    try {
-      // Validate URL
-      const url = new URL(imageUrl);
-      if (!['http:', 'https:'].includes(url.protocol)) {
-        throw new Error('Invalid URL protocol');
-      }
-
-      // Create image to validate and get base64
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      
-      img.onload = () => {
-        // Create canvas to convert to base64
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        
-        const base64 = canvas.toDataURL('image/png');
-        
-        const newImage = {
-          id: `img_url_${Date.now()}`,
-          file: null,
-          preview: base64,
-          result: null,
-          processing: false,
-          source: 'url',
-          url: imageUrl
-        };
-
-        setUploadedImages(prev => {
-          const updated = [...prev, newImage];
-          setCurrentImageIndex(prev.length);
-          return updated;
-        });
-
-        setImageUrl('');
-        setIsLoadingUrl(false);
-      };
-
-      img.onerror = () => {
-        setError('Failed to load image from URL. Please check the URL and ensure CORS is enabled.');
-        setIsLoadingUrl(false);
-      };
-
-      img.src = imageUrl;
-    } catch (err) {
-      setError('Invalid URL. Please enter a valid image URL (e.g., https://example.com/image.jpg)');
-      setIsLoadingUrl(false);
-    }
-  };
-
-  useEffect(() => {
-    // Add paste event listener
-    const handlePasteEvent = (e) => {
-      if (activeTab === 'image' && !e.target.closest('input') && !e.target.closest('textarea')) {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-
-        const imageItems = Array.from(items).filter(item => item.type.startsWith('image/'));
-        if (imageItems.length === 0) return;
-
-        e.preventDefault();
-        
-        const files = imageItems.map(item => item.getAsFile()).filter(Boolean);
-        if (files.length > 0) {
-          processFiles(files);
-        }
-      }
-    };
-
-    window.addEventListener('paste', handlePasteEvent);
-    return () => window.removeEventListener('paste', handlePasteEvent);
-  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const processImage = async (imageId = null) => {
-    const targetId = imageId || uploadedImages[currentImageIndex]?.id;
-    const imageIndex = uploadedImages.findIndex(img => img.id === targetId);
-    
-    if (imageIndex === -1 || !uploadedImages[imageIndex]?.preview) return;
-
-    setIsProcessingImage(true);
-    setError('');
-
-    // Update processing state
-    setUploadedImages(prev => {
-      const updated = [...prev];
-      updated[imageIndex] = { ...updated[imageIndex], processing: true };
-      return updated;
-    });
-
-    try {
-      const result = await predictEmotion(uploadedImages[imageIndex].preview, `image_${targetId}`);
-      
-      if (result.success) {
-        const analysisData = {
-          ...result,
-          bbox: result.bbox || null
-        };
-
-        // Update image with result
-        setUploadedImages(prev => {
-          const updated = [...prev];
-          updated[imageIndex] = { 
-            ...updated[imageIndex], 
-            result: analysisData,
-            processing: false
-          };
-          return updated;
-        });
-
-        setCurrentImageIndex(imageIndex);
-        setShowReport(true);
-        
-        // Save to image analyses database
-        if (result.emotion && result.confidence) {
-          try {
-            const imageFile = uploadedImages[imageIndex].file;
-            await api.post('/emotions/image-analysis', {
-              imageUrl: uploadedImages[imageIndex].preview,
-              emotion: result.emotion.charAt(0).toUpperCase() + result.emotion.slice(1),
-              confidence: result.confidence,
-              allEmotions: result.all_emotions || {},
-              bbox: result.bbox || null,
-              fileName: imageFile?.name || uploadedImages[imageIndex].url || 'uploaded-image',
-              fileSize: imageFile?.size || 0
-            });
-          } catch (saveError) {
-            console.error('Error saving image analysis:', saveError);
-            // Don't show error to user, just log it
-          }
-        }
-      } else {
-        setError(result.error || 'Failed to detect emotion in image. Please ensure a face is visible.');
-        setUploadedImages(prev => {
-          const updated = [...prev];
-          updated[imageIndex] = { ...updated[imageIndex], processing: false };
-          return updated;
-        });
-      }
-    } catch (err) {
-      setError('Error processing image. Please try again.');
-      console.error('Image processing error:', err);
-      setUploadedImages(prev => {
-        const updated = [...prev];
-        updated[imageIndex] = { ...updated[imageIndex], processing: false };
-        return updated;
-      });
-    } finally {
-      setIsProcessingImage(false);
-    }
-  };
-
-  const clearImage = (imageId = null) => {
-    if (imageId) {
-      // Remove specific image
-      setUploadedImages(prev => prev.filter(img => img.id !== imageId));
-      if (currentImageIndex >= uploadedImages.length - 1) {
-        setCurrentImageIndex(Math.max(0, uploadedImages.length - 2));
-      }
-    } else {
-      // Clear all images
-      setUploadedImages([]);
-      setCurrentImageIndex(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-    setError('');
-  };
-
-  const processAllImages = async () => {
-    for (let i = 0; i < uploadedImages.length; i++) {
-      if (!uploadedImages[i].result && uploadedImages[i].preview) {
-        await processImage(uploadedImages[i].id);
-        // Small delay between processing
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-    }
-  };
-
-  const handleDownloadReport = () => {
-    const currentImage = uploadedImages[currentImageIndex];
-    if (!currentImage?.result || !currentImage?.preview) return;
-
-    // Create a canvas to generate report image
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    canvas.width = 1200;
-    canvas.height = 1600;
-
-    const img = new Image();
-    img.onload = () => {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 50, 50, 1100, 800);
-      
-      // Add text annotations
-      ctx.fillStyle = '#000000';
-      ctx.font = 'bold 48px Arial';
-      ctx.fillText(`Emotion: ${currentImage.result.emotion}`, 50, 900);
-      ctx.font = '36px Arial';
-      ctx.fillText(`Confidence: ${(currentImage.result.confidence * 100).toFixed(1)}%`, 50, 970);
-      
-      canvas.toBlob((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `emotion-report-${Date.now()}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-      });
-    };
-    img.src = currentImage.preview;
-  };
+  const elapsed = session ? ((session.end || now) - session.start) / 1000 : 0;
+  const sessionTop = topEmotion(session?.counts || {});
+  const scores = reading?.scores || {};
+  const meta = reading ? emotionMeta(reading.emotion) : null;
+  const ended = session?.end;
 
   return (
-    <div className="emotion-detection-page">
-      <div className="container">
-        <ScrollAnimation direction="up" className="detection-header">
-          <button className="back-button" onClick={() => navigate('/dashboard')}>
-            <FiArrowLeft /> Back to Dashboard
-          </button>
-          <div className="header-content">
-            <h1 className="page-title">Emotion Detection</h1>
-            <p className="page-subtitle">
-              Detect emotions from your webcam or upload an image
-            </p>
-          </div>
-          <button 
-            className="info-button" 
-            onClick={() => setShowInfo(!showInfo)}
-            title="Information"
-          >
-            <FiInfo />
-          </button>
-        </ScrollAnimation>
+    <div className="detect-grid">
+      <section className="card stage-card">
+        <div className="stage" style={{ aspectRatio: live ? `${cam.frame.w} / ${cam.frame.h}` : '4 / 3' }}>
+          <video ref={cam.videoRef} className={`stage__video ${live ? 'is-on' : ''}`} playsInline muted />
+          {live && reading && !noFace && <FaceBox box={reading.box} frame={cam.frame} emotion={reading.emotion} confidence={reading.confidence} />}
 
-        {showInfo && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="info-panel"
-          >
-            <h3>How It Works</h3>
-            <ul>
-              <li>Click "Start Camera" to begin real-time emotion detection</li>
-              <li>Position your face clearly in front of the camera</li>
-              <li>Our AI analyzes your facial expressions every second</li>
-              <li>View detected emotions with confidence scores</li>
-              <li>Track your emotion history during the session</li>
-            </ul>
-            <p className="info-note">
-              <strong>Privacy:</strong> All processing happens in real-time. No video is stored or transmitted.
-            </p>
-          </motion.div>
-        )}
+          {live && (
+            <div className="stage__hud">
+              <span className="hud-pill"><span className="dot dot-live" style={{ color: '#ff6b66' }} />REC <span className="num">{fmt(elapsed)}</span></span>
+              {reading && <span className="hud-pill num">{Math.round(reading.ms)} ms</span>}
+            </div>
+          )}
+          {live && noFace && <div className="stage__toast">No face in view — face the camera in even light.</div>}
 
-        {/* Tab Selection */}
-        <div className="detection-tabs">
-          <button
-            className={`tab-button ${activeTab === 'camera' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('camera');
-              if (isStreaming) stopStream();
-            }}
-          >
-            <FiVideo /> Camera Detection
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'image' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('image');
-              if (isStreaming) stopStream();
-            }}
-          >
-            <FiImage /> Image Upload
-          </button>
+          {!live && (
+            <div className="stage__idle">
+              {cam.status === 'starting' ? (
+                <><span className="spinner" /><p>Starting camera and loading the model…</p></>
+              ) : ended ? (
+                <>
+                  <span className="stage__icon"><FiCheck /></span>
+                  <h3>Session finished</h3>
+                  <p>{fmt(elapsed)} · {session.total} readings{save ? ` · ${session.saved} saved` : ''}</p>
+                  <div className="stage__actions">
+                    <button type="button" className="btn btn-signal" onClick={start}><FiPlay /> New session</button>
+                    <Link to="/dashboard" className="btn btn-outline-dark">See overview</Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="stage__icon"><FiCamera /></span>
+                  <h3>Start a live session</h3>
+                  <p>Readings update about three times a second. Video never leaves this tab.</p>
+                  <button type="button" className="btn btn-signal btn-lg" onClick={start}><FiPlay /> Start camera</button>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
-        <AnimatePresence mode="wait">
-          {activeTab === 'camera' ? (
-            <motion.div
-              key="camera"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="detection-container"
-            >
-              <div className="video-section">
-            <div className="video-wrapper">
-              <video
-                ref={videoRef}
-                className="video-stream"
-                playsInline
-                muted
-                autoPlay
-              />
-              <canvas ref={canvasRef} className="detection-canvas" />
-              {!isStreaming && (
-                <div className="video-placeholder">
-                  <FiVideo size={64} />
-                  <p>Click Start Camera to begin detection</p>
-                  <p className="placeholder-hint">Make sure to allow camera permissions</p>
-                </div>
-              )}
-            </div>
-            
-            <div className="video-controls">
-              {!isStreaming ? (
-                <button 
-                  className="btn btn-primary" 
-                  onClick={startStream}
-                  disabled={apiStatus !== 'ready'}
-                >
-                  <FiVideo /> Start Camera
-                </button>
-              ) : (
-                <button className="btn btn-danger" onClick={stopStream}>
-                  <FiStopCircle /> Stop Camera
-                </button>
-              )}
-              {apiStatus === 'checking' && (
-                <span className="api-status checking">Checking API...</span>
-              )}
-              {apiStatus === 'ready' && (
-                <span className="api-status ready">✓ API Ready</span>
-              )}
-              {apiStatus === 'error' && (
-                <span className="api-status error">✗ API Error</span>
-              )}
-            </div>
+        {cam.error && <div className="alert alert-error stage-alert" role="alert"><FiAlertCircle /><span>{cam.error} <Link to="?mode=photo" className="link">Analyse a photo</Link></span></div>}
 
-            {error && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="error-message"
-              >
-                <FiAlertCircle /> {error}
-              </motion.div>
-            )}
-          </div>
-
-          <div className="results-section">
-            {isStreaming && emotion ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="emotion-display"
-              >
-                <div 
-                  className="emotion-icon-large"
-                  style={{ borderColor: getEmotionColor(emotion.emotion) }}
-                >
-                  <span className="emotion-emoji">{getEmotionEmoji(emotion.emotion)}</span>
-                </div>
-                <h3 className="emotion-label">
-                  {emotion.emotion.charAt(0).toUpperCase() + emotion.emotion.slice(1)}
-                </h3>
-                {emotion.allEmotions && Object.keys(emotion.allEmotions).length > 0 && (
-                  <div className="all-emotions-preview">
-                    <p className="emotions-title">All Emotions:</p>
-                    <div className="emotions-list">
-                      {Object.entries(emotion.allEmotions)
-                        .sort((a, b) => b[1] - a[1])
-                        .slice(0, 5)
-                        .map(([emotionName, conf]) => (
-                          <div key={emotionName} className="emotion-item-preview">
-                            <span className="emotion-name">{emotionName}</span>
-                            <span className="emotion-conf">{(conf * 100).toFixed(1)}%</span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-                <div className="emotion-confidence">
-                  <span>Confidence: {(emotion.confidence * 100).toFixed(1)}%</span>
-                  <div className="confidence-bar">
-                    <div
-                      className="confidence-fill"
-                      style={{ 
-                        width: `${emotion.confidence * 100}%`,
-                        background: getEmotionColor(emotion.emotion)
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="emotion-time">
-                  Detected at: {emotion.timestamp.toLocaleTimeString()}
-                </div>
-              </motion.div>
-            ) : (
-              <div className="waiting-state">
-                <FiSmile size={64} />
-                <p>Waiting for detection...</p>
-                <p className="waiting-hint">Start the camera to begin</p>
-              </div>
-            )}
-
-            {emotionHistory.length > 0 && (
-              <div className="emotion-history">
-                <h3 className="history-title">Recent Detections</h3>
-                <div className="history-list">
-                  {emotionHistory.map((item, index) => (
-                    <div key={index} className="history-item">
-                      <span className="history-emoji">{getEmotionEmoji(item.emotion)}</span>
-                      <div className="history-details">
-                        <span className="history-emotion">{item.emotion.charAt(0).toUpperCase() + item.emotion.slice(1)}</span>
-                        <span className="history-confidence">{(item.confidence * 100).toFixed(0)}%</span>
-                      </div>
-                      <span className="history-time">
-                        {item.timestamp.toLocaleTimeString()}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Emotion Statistics Charts */}
-            {user && (
-              <div className="emotion-charts-section">
-                <EmotionCharts userId={user.id} sessionId={sessionId} />
-              </div>
-            )}
-          </div>
-            </motion.div>
+        <div className="stage-bar">
+          {live ? (
+            <button type="button" className="btn btn-primary" onClick={stop}><FiSquare /> Stop session</button>
           ) : (
-            <motion.div
-              key="image"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="image-upload-container"
-            >
-              <div className="image-upload-section">
-                {/* File input - always available for "Add More" button */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  style={{ display: 'none' }}
-                />
-
-                {uploadedImages.length === 0 ? (
-                  <div className="upload-area">
-                    {/* Upload Method Tabs */}
-                    <div className="upload-method-tabs">
-                      <button
-                        className={`method-tab ${uploadMethod === 'file' ? 'active' : ''}`}
-                        onClick={() => setUploadMethod('file')}
-                      >
-                        <FiUpload /> File Upload
-                      </button>
-                      <button
-                        className={`method-tab ${uploadMethod === 'url' ? 'active' : ''}`}
-                        onClick={() => setUploadMethod('url')}
-                      >
-                        <FiImage /> Image URL
-                      </button>
-                      <button
-                        className={`method-tab ${uploadMethod === 'paste' ? 'active' : ''}`}
-                        onClick={() => setUploadMethod('paste')}
-                      >
-                        <FiImage /> Paste Image
-                      </button>
-                    </div>
-
-                    {/* File Upload Method */}
-                    {uploadMethod === 'file' && (
-                      <div
-                        ref={dropZoneRef}
-                        className={`upload-placeholder ${isDragging ? 'dragging' : ''}`}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                      >
-                        <FiUpload size={64} />
-                        <h3>Upload Images</h3>
-                        <p>Drag & drop images here or click to browse</p>
-                        <button
-                          className="btn btn-primary"
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          <FiUpload /> Choose Images
-                        </button>
-                        <p className="upload-hint">
-                          Supported formats: JPG, PNG, GIF, WebP (Multiple selection supported)
-                        </p>
-                        <p className="upload-hint-small">
-                          💡 Tip: You can drag and drop multiple images at once!
-                        </p>
-                      </div>
-                    )}
-
-                    {/* URL Method */}
-                    {uploadMethod === 'url' && (
-                      <div className="upload-placeholder url-upload">
-                        <FiImage size={64} />
-                        <h3>Load from URL</h3>
-                        <p>Enter an image URL to analyze</p>
-                        <div className="url-input-group">
-                          <input
-                            type="url"
-                            className="url-input"
-                            placeholder="https://example.com/image.jpg"
-                            value={imageUrl}
-                            onChange={(e) => setImageUrl(e.target.value)}
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleUrlSubmit();
-                              }
-                            }}
-                            disabled={isLoadingUrl}
-                          />
-                          <button
-                            className="btn btn-primary"
-                            onClick={handleUrlSubmit}
-                            disabled={isLoadingUrl || !imageUrl.trim()}
-                          >
-                            {isLoadingUrl ? 'Loading...' : 'Load Image'}
-                          </button>
-                        </div>
-                        <p className="upload-hint">
-                          Enter a direct link to an image (JPG, PNG, GIF, WebP)
-                        </p>
-                        <p className="upload-hint-small">
-                          ⚠️ Note: The image must be publicly accessible and CORS-enabled
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Paste Method */}
-                    {uploadMethod === 'paste' && (
-                      <div className="upload-placeholder paste-upload">
-                        <FiImage size={64} />
-                        <h3>Paste Image</h3>
-                        <p>Copy an image and press <kbd>Ctrl+V</kbd> (or <kbd>Cmd+V</kbd> on Mac)</p>
-                        <div className="paste-indicator">
-                          <div className="paste-icon">📋</div>
-                          <p>Press <kbd>Ctrl+V</kbd> to paste</p>
-                        </div>
-                        <p className="upload-hint">
-                          You can paste images from:
-                        </p>
-                        <ul className="paste-sources">
-                          <li>📋 Clipboard (after copying an image)</li>
-                          <li>🖼️ Screenshots</li>
-                          <li>📱 Images from other applications</li>
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="images-container">
-                    {/* Image Gallery */}
-                    <div className="images-grid">
-                      {uploadedImages.map((imgObj, index) => (
-                        <motion.div
-                          key={imgObj.id}
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className={`image-item ${currentImageIndex === index ? 'active' : ''}`}
-                          onClick={() => setCurrentImageIndex(index)}
-                        >
-                          <div className="image-item-wrapper">
-                            {imgObj.preview && (
-                              <img src={imgObj.preview} alt={`Upload ${index + 1}`} className="image-thumbnail" />
-                            )}
-                            {imgObj.processing && (
-                              <div className="image-processing-overlay">
-                                <div className="processing-spinner"></div>
-                                <span>Processing...</span>
-                              </div>
-                            )}
-                            {imgObj.result && (
-                              <div className="image-result-badge">
-                                <span>{getEmotionEmoji(imgObj.result.emotion)}</span>
-                                <span>{(imgObj.result.confidence * 100).toFixed(0)}%</span>
-                              </div>
-                            )}
-                            <button
-                              className="image-remove-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                clearImage(imgObj.id);
-                              }}
-                            >
-                              <FiX />
-                            </button>
-                          </div>
-                          {imgObj.result && (
-                            <div className="image-item-emotion">
-                              {imgObj.result.emotion}
-                            </div>
-                          )}
-                        </motion.div>
-                      ))}
-                    </div>
-
-                    {/* Add More Section - Quick Upload */}
-                    <div 
-                      className={`add-more-section ${isDragging ? 'dragging' : ''}`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                    >
-                      <div className="upload-method-tabs">
-                        <button
-                          className={`method-tab ${uploadMethod === 'file' ? 'active' : ''}`}
-                          onClick={() => {
-                            setUploadMethod('file');
-                            fileInputRef.current?.click();
-                          }}
-                        >
-                          <FiUpload /> Add Files
-                        </button>
-                        <button
-                          className={`method-tab ${uploadMethod === 'url' ? 'active' : ''}`}
-                          onClick={() => setUploadMethod('url')}
-                        >
-                          <FiImage /> Add from URL
-                        </button>
-                        <button
-                          className={`method-tab ${uploadMethod === 'paste' ? 'active' : ''}`}
-                          onClick={() => setUploadMethod('paste')}
-                        >
-                          <FiImage /> Paste Image
-                        </button>
-                      </div>
-
-                      {/* URL Input - shown when URL tab is active */}
-                      {uploadMethod === 'url' && (
-                        <div className="quick-url-input">
-                          <div className="url-input-group">
-                            <input
-                              type="url"
-                              className="url-input"
-                              placeholder="https://example.com/image.jpg"
-                              value={imageUrl}
-                              onChange={(e) => setImageUrl(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleUrlSubmit();
-                                }
-                              }}
-                              disabled={isLoadingUrl}
-                            />
-                            <button
-                              className="btn btn-primary"
-                              onClick={handleUrlSubmit}
-                              disabled={isLoadingUrl || !imageUrl.trim()}
-                            >
-                              {isLoadingUrl ? 'Loading...' : 'Load'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Paste Indicator - shown when paste tab is active */}
-                      {uploadMethod === 'paste' && (
-                        <div className="quick-paste-indicator">
-                          <p>Press <kbd>Ctrl+V</kbd> (or <kbd>Cmd+V</kbd> on Mac) to paste an image</p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Current Image Preview and Actions */}
-                    {uploadedImages[currentImageIndex] && (
-                      <div className="current-image-section">
-                        <div className="image-preview-wrapper">
-                          <img 
-                            src={uploadedImages[currentImageIndex].preview} 
-                            alt="Current" 
-                            className="preview-image" 
-                          />
-                        </div>
-                        <div className="image-actions">
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => processImage(uploadedImages[currentImageIndex].id)}
-                            disabled={isProcessingImage || apiStatus !== 'ready' || uploadedImages[currentImageIndex].processing}
-                          >
-                            {uploadedImages[currentImageIndex].processing ? (
-                              <>Processing...</>
-                            ) : uploadedImages[currentImageIndex].result ? (
-                              <>
-                                <FiSmile /> Re-analyze
-                              </>
-                            ) : (
-                              <>
-                                <FiSmile /> Analyze Emotion
-                              </>
-                            )}
-                          </button>
-                          {uploadedImages.length > 1 && (
-                            <button
-                              className="btn btn-primary"
-                              onClick={processAllImages}
-                              disabled={isProcessingImage || apiStatus !== 'ready'}
-                            >
-                              <FiSmile /> Analyze All
-                            </button>
-                          )}
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => clearImage()}
-                          >
-                            <FiX /> Clear All
-                          </button>
-                          {uploadedImages[currentImageIndex].result && (
-                            <button
-                              className="btn btn-secondary"
-                              onClick={() => {
-                                setShowReport(true);
-                              }}
-                            >
-                              <FiSmile /> View Report
-                            </button>
-                          )}
-                          {apiStatus === 'checking' && (
-                            <span className="api-status checking">Checking API...</span>
-                          )}
-                          {apiStatus === 'ready' && (
-                            <span className="api-status ready">✓ API Ready</span>
-                          )}
-                          {apiStatus === 'error' && (
-                            <span className="api-status error">✗ API Error</span>
-                          )}
-                        </div>
-                        {error && (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="error-message"
-                          >
-                            <FiAlertCircle /> {error}
-                          </motion.div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </motion.div>
+            <span className="hint">{cam.status === 'starting' ? 'Allow camera access if your browser asks.' : 'Tip: face the camera in soft, even light.'}</span>
           )}
-        </AnimatePresence>
+          <label className="switch">
+            <input type="checkbox" checked={save} onChange={(e) => setSave(e.target.checked)} />
+            <span className="switch__track"><span /></span>
+            <span className="switch__label">Save readings to history</span>
+          </label>
+        </div>
+      </section>
 
-        {/* Emotion Report Modal */}
-        {showReport && uploadedImages[currentImageIndex]?.result && uploadedImages[currentImageIndex]?.preview && (
-          <EmotionReport
-            result={uploadedImages[currentImageIndex].result}
-            image={uploadedImages[currentImageIndex].preview}
-            onClose={() => setShowReport(false)}
-            onDownload={handleDownloadReport}
-          />
-        )}
+      <div className="detect-side">
+        <section className="card card-pad now-card" style={{ '--c': meta?.color || 'var(--faint)' }}>
+          <div className="card-head">
+            <h2>Right now</h2>
+            {live ? <span className="badge badge-ok"><span className="dot dot-live" />Live</span> : <span className="badge">Idle</span>}
+          </div>
+          <div className="now-read">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.strong key={meta?.key || 'none'} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
+                {meta?.label || <span className="now-empty">{live ? 'Looking for a face…' : 'No reading yet'}</span>}
+              </motion.strong>
+            </AnimatePresence>
+            <span className="num">{reading ? Math.round(reading.confidence * 100) : 0}<small>%</small></span>
+          </div>
+          <EmotionBars scores={scores} fast />
+        </section>
+
+        <section className="card card-pad">
+          <div className="card-head">
+            <div><h2>This session</h2><p>{session ? (ended ? 'Finished' : 'Recording') : 'Starts when you press start'}</p></div>
+            {session && save && (
+              <span className={`badge ${session.failed ? 'badge-danger' : ''}`} title={session.failed ? `${session.failed} readings couldn’t be saved` : undefined}>
+                {session.failed ? <FiAlertCircle /> : <FiCheck />}{session.saved} saved
+              </span>
+            )}
+          </div>
+          <div className="session-stats">
+            <div className="stat"><span className="stat-label">Duration</span><span className="stat-value num">{fmt(elapsed)}</span></div>
+            <div className="stat"><span className="stat-label">Readings</span><span className="stat-value num">{session?.total || 0}</span></div>
+            <div className="stat"><span className="stat-label">Most frequent</span><span className="stat-value" style={{ color: sessionTop ? emotionMeta(sessionTop[0]).color : undefined }}>{sessionTop ? emotionMeta(sessionTop[0]).label : '—'}</span></div>
+          </div>
+          <div className="timeline-strip" aria-label="Session timeline">
+            {(session?.timeline || []).map((k, i) => <span key={i} style={{ '--c': emotionMeta(k).color }} />)}
+            {!session?.timeline?.length && <em>Readings will appear here as a timeline</em>}
+          </div>
+          <Spectrum counts={session?.counts || {}} />
+          <div className="legend">
+            {EMOTIONS.filter((e) => session?.counts?.[e.key]).map((e) => (
+              <span key={e.key} style={{ '--c': e.color }}><span className="swatch" />{e.label} <span className="num faint">{Math.round((session.counts[e.key] / session.total) * 100)}%</span></span>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
-};
+}
 
-export default EmotionDetection;
+/* ── Photos ──────────────────────────────────────────────── */
+function PhotoMode() {
+  const [items, setItems] = useState([]); // { id, name, size, src, status: queued|busy|done|noface, result, saved }
+  const [selected, setSelected] = useState(null);
+  const [drag, setDrag] = useState(false);
+  const [url, setUrl] = useState('');
+  const [urlBusy, setUrlBusy] = useState(false);
+  const [error, setError] = useState('');
+  const fileRef = useRef(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
+  const patch = (id, p) => setItems((list) => list.map((it) => (it.id === id ? { ...it, ...p } : it)));
+
+  const analyse = useCallback(async (item) => {
+    patch(item.id, { status: 'busy' });
+    const r = await analyseImage(item.src);
+    if (!r.ok) { patch(item.id, { status: 'noface', error: r.error }); return; }
+    const result = { emotion: r.emotion, confidence: r.confidence, scores: r.scores, box: r.box, frame: r.frame };
+    patch(item.id, { status: 'done', result });
+    try {
+      await api.post('/emotions/image-analysis', {
+        imageUrl: item.src,
+        emotion: toApiLabel(r.emotion),
+        confidence: r.confidence,
+        allEmotions: r.scores,
+        bbox: r.box,
+        fileName: item.name,
+        fileSize: item.size,
+      });
+      patch(item.id, { saved: true });
+    } catch (e) {
+      patch(item.id, { saved: false, saveError: true });
+    }
+  }, []);
+
+  const addSources = useCallback(async (entries) => {
+    setError('');
+    const added = [];
+    for (const { load, name, size } of entries) {
+      try {
+        const src = await load();
+        added.push({ id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name, size, src, status: 'queued' });
+      } catch (e) {
+        setError(e.message);
+      }
+    }
+    if (!added.length) return;
+    setItems((list) => [...added, ...list]);
+    setSelected(added[0].id);
+    for (const it of added) await analyse(it); // eslint-disable-line no-await-in-loop
+  }, [analyse]);
+
+  const onFiles = (files) => {
+    const imgs = Array.from(files || []).filter((f) => f.type.startsWith('image/'));
+    if (!imgs.length) { setError('Choose image files (JPG, PNG, WebP or HEIC exported as JPG).'); return; }
+    addSources(imgs.slice(0, 12).map((f) => ({ name: f.name, size: f.size, load: () => fileToDataUrl(f) })));
+  };
+
+  useEffect(() => {
+    const onPaste = (e) => {
+      if (e.target.closest?.('input, textarea')) return;
+      const files = Array.from(e.clipboardData?.items || []).filter((i) => i.type.startsWith('image/')).map((i) => i.getAsFile()).filter(Boolean);
+      if (files.length) { e.preventDefault(); onFiles(files); }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const addUrl = async (e) => {
+    e.preventDefault();
+    let u;
+    try { u = new URL(url.trim()); if (!/^https?:$/.test(u.protocol)) throw new Error(); } catch (err) { setError('Enter a full image link starting with https://'); return; }
+    setUrlBusy(true);
+    await addSources([{ name: u.pathname.split('/').pop() || u.hostname, size: 0, load: () => toDataUrl(u.href) }]);
+    setUrlBusy(false);
+    setUrl('');
+  };
+
+  const remove = (id) => {
+    setItems((list) => list.filter((i) => i.id !== id));
+    if (selected === id) setSelected(itemsRef.current.find((i) => i.id !== id)?.id || null);
+  };
+
+  const current = items.find((i) => i.id === selected) || null;
+  const done = items.filter((i) => i.status === 'done');
+  const counts = useMemo(() => done.reduce((acc, i) => { const k = emotionMeta(i.result.emotion).key; acc[k] = (acc[k] || 0) + 1; return acc; }, {}), [done]);
+
+  return (
+    <div className="photo-grid">
+      <section className="card viewer-card">
+        {current ? (
+          <>
+            <div className="viewer">
+              <div className="viewer__img" style={current.result?.frame ? { aspectRatio: `${current.result.frame.w} / ${current.result.frame.h}`, width: `min(100%, calc(62vh * ${current.result.frame.w / current.result.frame.h}))` } : undefined}>
+                <img src={current.src} alt={current.name} />
+                {current.result && <FaceBox box={current.result.box} frame={current.result.frame} emotion={current.result.emotion} confidence={current.result.confidence} />}
+                {current.status === 'busy' && <div className="stage__toast"><span className="spinner" />Analysing on your device…</div>}
+              </div>
+            </div>
+            <div className="viewer__body">
+              {current.status === 'noface' ? (
+                <div className="alert alert-error"><FiAlertCircle /><span><strong>No face found.</strong> Try a photo where the face is front-on, unobstructed and well lit.</span></div>
+              ) : current.result ? (
+                <div className="result">
+                  <div className="result__head" style={{ '--c': emotionMeta(current.result.emotion).color }}>
+                    <div>
+                      <span className="stat-label">Dominant expression</span>
+                      <strong>{emotionMeta(current.result.emotion).label}</strong>
+                    </div>
+                    <span className="num result__conf">{Math.round(current.result.confidence * 100)}<small>%</small></span>
+                  </div>
+                  <EmotionBars scores={current.result.scores} />
+                </div>
+              ) : (
+                <div className="result result--loading"><div className="skeleton" style={{ height: 48 }} /><div className="skeleton" style={{ height: 140 }} /></div>
+              )}
+              <div className="viewer__actions">
+                {current.result && <button type="button" className="btn btn-primary" onClick={() => downloadReport({ image: current.src, ...current.result, date: Date.now() })}><FiDownload /> Download report</button>}
+                <button type="button" className="btn btn-outline" onClick={() => remove(current.id)}><FiX /> Remove from list</button>
+                {current.saved && <span className="badge badge-ok"><FiCheck />Saved to History</span>}
+                {current.saveError && <span className="badge badge-danger"><FiAlertCircle />Not saved</span>}
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="empty viewer-empty">
+            <span className="empty-icon"><FiImage /></span>
+            <h3>No photo selected</h3>
+            <p>Add one or more photos. Each face is analysed on your device and the result is saved to your history.</p>
+          </div>
+        )}
+      </section>
+
+      <div className="detect-side">
+        <section
+          className={`card dropzone ${drag ? 'is-drag' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); onFiles(e.dataTransfer.files); }}
+        >
+          <button type="button" className="dropzone__hit" onClick={() => fileRef.current?.click()}>
+            <span className="dropzone__icon"><FiUploadCloud /></span>
+            <strong>Drop photos or <span className="link">browse</span></strong>
+            <span className="hint">Up to 12 at once · you can also paste with Ctrl/⌘ + V</span>
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { onFiles(e.target.files); e.target.value = ''; }} />
+          <form className="url-row" onSubmit={addUrl}>
+            <FiLink />
+            <input className="input" type="url" placeholder="…or paste an image link" value={url} onChange={(e) => setUrl(e.target.value)} aria-label="Image link" />
+            <button type="submit" className="btn btn-outline btn-sm" disabled={!url || urlBusy}>{urlBusy ? <span className="spinner" /> : 'Add'}</button>
+          </form>
+          {error && <div className="alert alert-error"><FiAlertCircle />{error}</div>}
+        </section>
+
+        <section className="card card-pad">
+          <div className="card-head">
+            <div><h2>This batch</h2><p>{items.length ? `${done.length} of ${items.length} analysed` : 'Nothing added yet'}</p></div>
+            {items.length > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setItems([]); setSelected(null); }}><FiTrash2 />Clear</button>}
+          </div>
+          {items.length ? (
+            <>
+              <ul className="queue">
+                <AnimatePresence initial={false}>
+                  {items.map((it) => (
+                    <motion.li key={it.id} layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.3, ease: EASE }}>
+                      <button type="button" className={`queue__item ${selected === it.id ? 'is-active' : ''}`} onClick={() => setSelected(it.id)}>
+                        <img src={it.src} alt="" />
+                        <span className="queue__meta">
+                          <span className="queue__name">{it.name}</span>
+                          {it.status === 'done' ? <EmotionChip emotion={it.result.emotion} confidence={it.result.confidence} /> : it.status === 'noface' ? <span className="badge badge-danger">No face</span> : <span className="badge"><span className="spinner" style={{ width: 11, height: 11 }} />{it.status === 'busy' ? 'Analysing' : 'Queued'}</span>}
+                        </span>
+                      </button>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+              {done.length > 1 && <div style={{ marginTop: 16 }}><Spectrum counts={counts} /></div>}
+            </>
+          ) : (
+            <p className="muted" style={{ fontSize: '0.9rem' }}>Tip: compare several photos of the same person to see how the reading changes.</p>
+          )}
+          <Link to="/image-analyses" className="btn btn-outline btn-block" style={{ marginTop: 18 }}><FiClock /> Open full history</Link>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export default function EmotionDetection() {
+  useDocTitle('Detect');
+  const [params, setParams] = useSearchParams();
+  const mode = params.get('mode') === 'photo' ? 'photo' : 'live';
+  return (
+    <div>
+      <PageHeader
+        title="Detect"
+        description={mode === 'live' ? 'Read expressions live from your camera. Everything runs on this device.' : 'Analyse one or many photos. Results are saved to your history.'}
+        actions={(
+          <Segmented
+            id="detect-mode"
+            value={mode}
+            onChange={(v) => setParams(v === 'photo' ? { mode: 'photo' } : {}, { replace: true })}
+            options={[{ value: 'live', label: 'Live camera', icon: <FiZap /> }, { value: 'photo', label: 'Photos', icon: <FiImage /> }]}
+          />
+        )}
+      />
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div key={mode} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: EASE }}>
+          {mode === 'live' ? <LiveMode /> : <PhotoMode />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}

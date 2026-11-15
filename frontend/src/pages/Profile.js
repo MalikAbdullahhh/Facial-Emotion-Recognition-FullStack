@@ -1,336 +1,154 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { FiUser, FiMail, FiClock, FiLogIn, FiLogOut, FiEdit2, FiSave, FiX, FiArrowLeft, FiShield, FiActivity } from 'react-icons/fi';
-import EmotionCharts from '../components/EmotionCharts';
-import ScrollAnimation from '../components/ScrollAnimation';
+import { AnimatePresence, motion } from 'framer-motion';
+import { FiAlertCircle, FiCheck, FiEdit2, FiLogOut, FiMonitor, FiMoon, FiRefreshCw, FiSun } from 'react-icons/fi';
 import api from '../utils/api';
+import { apiError, initials, signOut, updateStoredUser } from '../lib/auth';
+import { useDocTitle } from '../lib/hooks';
+import { useTheme } from '../context/ThemeContext';
+import { PageHeader } from '../components/layout';
+import { EASE, Segmented } from '../components/ui';
+import './Dashboard.css';
 import './Profile.css';
 
-const Profile = () => {
+const device = (ua = '') => {
+  const b = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : ua ? 'Browser' : 'Unknown';
+  const o = /iPhone|iPad/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Mac OS X/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '';
+  return o ? `${b} on ${o}` : b;
+};
+const fmtDur = (s) => { if (!s && s !== 0) return '—'; const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; };
+
+export default function Profile() {
+  useDocTitle('Account');
+  const navigate = useNavigate();
+  const { preference, setPreference } = useTheme();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: '', email: '' });
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '' });
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState({ type: '', text: '' });
 
-  useEffect(() => {
-    fetchProfile();
-    // Update session time every 30 seconds
-    const interval = setInterval(fetchProfile, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchProfile = async () => {
+  const load = async () => {
+    setLoading(true); setError('');
     try {
-      const response = await api.get('/users/profile');
-      setUser(response.data.user);
-      setEditForm({
-        name: response.data.user.name,
-        email: response.data.user.email
-      });
-    } catch (error) {
-      if (error.response?.status === 401) {
-        navigate('/login');
-      }
-    } finally {
-      setLoading(false);
-    }
+      const { data } = await api.get('/users/profile');
+      setUser(data.user);
+      setForm({ name: data.user.name, email: data.user.email });
+    } catch (e) { setError('Your account details couldn’t be loaded.'); }
+    finally { setLoading(false); }
   };
+  useEffect(() => { load(); }, []);
 
-  const handleEdit = () => {
-    setEditing(true);
-    setError('');
-    setSuccess('');
-  };
-
-  const handleCancel = () => {
-    setEditing(false);
-    setEditForm({
-      name: user.name,
-      email: user.email
-    });
-    setError('');
-    setSuccess('');
-  };
-
-  const handleSave = async () => {
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true); setNotice({ type: '', text: '' });
     try {
-      const response = await api.put('/users/profile', editForm);
-      setUser(response.data.user);
+      const { data } = await api.put('/users/profile', { name: form.name.trim(), email: form.email.trim() });
+      setUser((u) => ({ ...u, ...data.user }));
+      updateStoredUser({ name: data.user.name, email: data.user.email });
       setEditing(false);
-      setSuccess('Profile updated successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
-      setError(error.response?.data?.message || 'Failed to update profile');
-    }
+      setNotice({ type: 'ok', text: 'Profile updated.' });
+    } catch (err) { setNotice({ type: 'error', text: apiError(err) }); }
+    finally { setSaving(false); }
   };
 
-  const handleLogout = async () => {
-    try {
-      await api.post('/auth/logout');
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      navigate('/');
-    } catch (error) {
-      // Still logout even if API call fails
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      navigate('/');
-    }
-  };
+  const out = async () => { await signOut(); navigate('/', { replace: true }); };
 
   if (loading) {
     return (
-      <div className="profile-page">
-        <div className="profile-loading">
-          <div className="loading-spinner"></div>
-          <p className="loading-text">Loading profile...</p>
-        </div>
+      <div>
+        <PageHeader title="Account" />
+        <div className="acct-grid"><div className="skeleton" style={{ height: 220, borderRadius: 24 }} /><div className="skeleton" style={{ height: 220, borderRadius: 24 }} /></div>
+      </div>
+    );
+  }
+  if (error || !user) {
+    return (
+      <div>
+        <PageHeader title="Account" />
+        <div className="alert alert-error"><FiAlertCircle /><span style={{ flex: 1 }}>{error}</span><button type="button" className="btn btn-outline btn-sm" onClick={load}><FiRefreshCw />Retry</button></div>
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  const history = (user.loginHistory || []).slice().reverse().slice(0, 10);
 
   return (
-    <div className="profile-page">
-      <div className="container">
-        <ScrollAnimation direction="up" className="profile-container">
-          <div className="profile-header">
-            <button className="back-button" onClick={() => navigate('/dashboard')}>
-              <FiArrowLeft /> Back to Dashboard
-            </button>
+    <div>
+      <PageHeader title="Account" description="Your profile, preferences and sign-in activity." />
+
+      <div className="acct-grid">
+        <section className="card card-pad">
+          <div className="acct-id">
+            <span className="avatar avatar-lg">{initials(user.name)}</span>
+            <div className="acct-id__text">
+              <h2>{user.name}</h2>
+              <p className="muted">{user.email}</p>
+              <div className="acct-id__badges">
+                <span className={`badge ${user.role === 'admin' ? 'badge-signal' : ''}`}>{user.role === 'admin' ? 'Administrator' : 'Member'}</span>
+                <span className="badge">Since {new Date(user.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</span>
+              </div>
+            </div>
+            {!editing && <button type="button" className="btn btn-outline btn-sm acct-id__edit" onClick={() => { setEditing(true); setNotice({ type: '', text: '' }); }}><FiEdit2 />Edit</button>}
           </div>
 
-          <div className="profile-header-main">
-            <div className="profile-avatar">
-              <FiUser />
-            </div>
-            <div className="profile-header-info">
-              <h1 className="profile-name">{user.name}</h1>
-              <p className="profile-email">{user.email}</p>
-              <span className={`profile-role ${user.role}`}>{user.role}</span>
-            </div>
-            {!editing ? (
-              <button className="edit-button" onClick={handleEdit}>
-                <FiEdit2 /> Edit Profile
-              </button>
-            ) : (
-              <div className="edit-actions">
-                <button className="save-button" onClick={handleSave}>
-                  <FiSave /> Save
-                </button>
-                <button className="cancel-button" onClick={handleCancel}>
-                  <FiX /> Cancel
-                </button>
-              </div>
+          <AnimatePresence initial={false}>
+            {editing && (
+              <motion.form onSubmit={save} className="acct-form" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.35, ease: EASE }}>
+                <div className="acct-form__in">
+                  <div className="field"><label htmlFor="p-name">Full name</label><input id="p-name" className="input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                  <div className="field"><label htmlFor="p-email">Email</label><input id="p-email" type="email" className="input" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+                  <div className="acct-form__btns">
+                    <button type="button" className="btn btn-ghost" onClick={() => { setEditing(false); setForm({ name: user.name, email: user.email }); }}>Cancel</button>
+                    <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? <><span className="spinner" />Saving…</> : 'Save changes'}</button>
+                  </div>
+                </div>
+              </motion.form>
             )}
-          </div>
+          </AnimatePresence>
+          {notice.text && <div className={`alert ${notice.type === 'ok' ? 'alert-ok' : 'alert-error'}`} style={{ marginTop: 16 }}>{notice.type === 'ok' ? <FiCheck /> : <FiAlertCircle />}{notice.text}</div>}
 
-          {error && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="alert alert-error"
-            >
-              {error}
-            </motion.div>
-          )}
-
-          {success && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="alert alert-success"
-            >
-              {success}
-            </motion.div>
-          )}
-
-          <div className="profile-content">
-            <div className="profile-section">
-              <div className="section-header-inline">
-                <h2 className="section-title">
-                  <FiUser /> Personal Information
-                </h2>
-              </div>
-              <div className="info-grid">
-                <div className="info-item">
-                  <label>
-                    <FiUser /> Full Name
-                  </label>
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      className="edit-input"
-                    />
-                  ) : (
-                    <p>{user.name}</p>
-                  )}
-                </div>
-                <div className="info-item">
-                  <label>
-                    <FiMail /> Email Address
-                  </label>
-                  {editing ? (
-                    <input
-                      type="email"
-                      value={editForm.email}
-                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                      className="edit-input"
-                    />
-                  ) : (
-                    <p>{user.email}</p>
-                  )}
-                </div>
-                <div className="info-item">
-                  <label>Account Created</label>
-                  <p>{new Date(user.createdAt).toLocaleDateString()}</p>
-                </div>
-                <div className="info-item">
-                  <label>Last Updated</label>
-                  <p>{new Date(user.updatedAt).toLocaleDateString()}</p>
-                </div>
-              </div>
+          <div className="acct-rows">
+            <div className="acct-row">
+              <div><strong>Appearance</strong><span>Match your device or pick a theme.</span></div>
+              <Segmented id="appearance" value={preference} onChange={setPreference} options={[{ value: 'system', label: 'Auto', icon: <FiMonitor /> }, { value: 'light', label: 'Light', icon: <FiSun /> }, { value: 'dark', label: 'Dark', icon: <FiMoon /> }]} />
             </div>
-
-            <div className="profile-section">
-              <div className="section-header-inline">
-                <h2 className="section-title">
-                  <FiActivity /> Activity Statistics
-                </h2>
-              </div>
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-icon">
-                    <FiClock />
-                  </div>
-                  <div className="stat-info">
-                    <h3 className="stat-value">{user.totalTimeFormatted}</h3>
-                    <p className="stat-label">Total Time on Site</p>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon">
-                    <FiLogIn />
-                  </div>
-                  <div className="stat-info">
-                    <h3 className="stat-value">{user.loginCount}</h3>
-                    <p className="stat-label">Total Logins</p>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon">
-                    <FiClock />
-                  </div>
-                  <div className="stat-info">
-                    <h3 className="stat-value">
-                      {user.isOnline ? user.currentSessionTimeFormatted : 'Offline'}
-                    </h3>
-                    <p className="stat-label">Current Session</p>
-                    <span className={`status-badge ${user.isOnline ? 'online' : 'offline'}`}>
-                      {user.isOnline ? 'Online' : 'Offline'}
-                    </span>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon">
-                    <FiLogIn />
-                  </div>
-                  <div className="stat-info">
-                    <h3 className="stat-value">
-                      {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
-                    </h3>
-                    <p className="stat-label">Last Login</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="profile-section">
-              <div className="section-header-inline">
-                <h2 className="section-title">
-                  <FiShield /> Login History
-                </h2>
-              </div>
-              <div className="login-history">
-                {user.loginHistory && user.loginHistory.length > 0 ? (
-                  <div className="history-list">
-                    {user.loginHistory.slice().reverse().slice(0, 10).map((session, index) => (
-                      <div key={index} className="history-item">
-                        <div className="history-main">
-                          <div className="history-time">
-                            <FiLogIn />
-                            <span>{new Date(session.loginTime).toLocaleString()}</span>
-                          </div>
-                          {session.logoutTime && (
-                            <div className="history-time">
-                              <FiLogOut />
-                              <span>{new Date(session.logoutTime).toLocaleString()}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="history-details">
-                          {session.sessionDuration && (
-                            <span className="session-duration">
-                              Duration: {formatTime(session.sessionDuration)}
-                            </span>
-                          )}
-                          {session.ipAddress && (
-                            <span className="session-ip">IP: {session.ipAddress}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="no-history">No login history available</p>
-                )}
-              </div>
-            </div>
-
-            <div className="profile-actions">
-              <button className="logout-button" onClick={handleLogout}>
-                <FiLogOut /> Logout
-              </button>
+            <div className="acct-row">
+              <div><strong>Sign out</strong><span>End your session on this device.</span></div>
+              <button type="button" className="btn btn-outline" onClick={out}><FiLogOut />Sign out</button>
             </div>
           </div>
+        </section>
 
-          {/* Emotion Statistics Charts */}
-          <div className="profile-section">
-            <div className="section-header-inline">
-              <h2 className="section-title">
-                <FiActivity /> Emotion Statistics & Analytics
-              </h2>
-            </div>
-            {user && <EmotionCharts userId={user.id} />}
-          </div>
-        </ScrollAnimation>
+        <section className="card kpis kpis--acct">
+          <div className="stat kpi"><span className="stat-label">Time in FER</span><span className="stat-value num">{fmtDur(user.totalTimeOnSite)}</span></div>
+          <div className="stat kpi"><span className="stat-label">Sign-ins</span><span className="stat-value num">{user.loginCount || 0}</span></div>
+          <div className="stat kpi"><span className="stat-label">Last sign-in</span><span className="stat-value acct-small">{user.lastLogin ? new Date(user.lastLogin).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '—'}</span><span className="stat-sub">{user.lastLogin ? new Date(user.lastLogin).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Not recorded yet'}</span></div>
+          <div className="stat kpi"><span className="stat-label">Status</span><span className="stat-value acct-small" style={{ color: user.isOnline ? 'var(--ok)' : 'var(--muted)' }}>{user.isOnline ? 'Online' : 'Offline'}</span><span className="stat-sub">{user.isOnline ? `this session ${user.currentSessionTimeFormatted}` : 'no active session'}</span></div>
+        </section>
       </div>
+
+      <section className="card card-pad" style={{ marginTop: 20 }}>
+        <div className="card-head"><div><h3>Recent sign-ins</h3><p>The last ten times your account was used.</p></div></div>
+        {history.length ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Date</th><th>Device</th><th>Duration</th></tr></thead>
+              <tbody>
+                {history.map((h, i) => (
+                  <tr key={h._id || i}>
+                    <td><strong>{new Date(h.loginTime).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</strong> <span className="faint">{new Date(h.loginTime).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span></td>
+                    <td>{device(h.userAgent)}</td>
+                    <td className="num">{h.logoutTime ? fmtDur(h.sessionDuration) : i === 0 && user.isOnline ? <span className="badge badge-ok"><span className="dot dot-live" />Active</span> : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="muted">No sign-ins recorded yet. They’ll appear here next time you sign in.</p>}
+      </section>
     </div>
   );
-};
-
-function formatTime(seconds) {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  
-  if (hours > 0) {
-    return `${hours}h ${minutes}m ${secs}s`;
-  } else if (minutes > 0) {
-    return `${minutes}m ${secs}s`;
-  } else {
-    return `${secs}s`;
-  }
 }
-
-export default Profile;
-

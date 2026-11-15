@@ -1,0 +1,83 @@
+/* Marketing sub-pages (About, Contact, 404) */
+.page-hero { padding: 48px 0 72px; }
+.page-hero--tight { padding-bottom: 40px; }
+.page-hero h1 { font-size: clamp(2.3rem, 5.6vw, 4rem); letter-spacing: -0.045em; line-height: 1.02; max-width: 18ch; }
+.page-hero__grid { display: grid; gap: 24px; align-items: end; }
+.page-hero__lead { margin-top: 20px; max-width: 40rem; }
+@media (min-width: 960px) { .page-hero { padding: 80px 0 96px; } .page-hero--tight { padding-bottom: 48px; } .page-hero__grid { grid-template-columns: 1.3fr 1fr; gap: 64px; } }
+.page-sec { padding-top: 0; }
+.page-sec.section--sunk { padding-top: 88px; }
+@media (min-width: 1024px) { .page-sec.section--sunk { padding-top: 128px; } }
+.section--sunk + .page-sec { padding-top: 88px; }
+@media (min-width: 1024px) { .section--sunk + .page-sec { padding-top: 128px; } }
+
+.principles { display: grid; gap: 16px; }
+.principle { padding: 28px 24px; border-radius: var(--r-lg); background: var(--surface); border: 1px solid var(--line); }
+.principle h3 { margin-top: 28px; font-size: 1.3rem; letter-spacing: -0.025em; }
+.principle p { margin-top: 8px; color: var(--muted); }
+@media (min-width: 900px) { .principles { grid-template-columns: repeat(3, 1fr); } }
+
+.split { display: grid; gap: 40px; align-items: start; }
+.split__title { font-size: clamp(2rem, 4vw, 3rem); max-width: 16ch; }
+@media (min-width: 960px) { .split { grid-template-columns: 1.15fr 1fr; gap: 72px; } }
+.timeline { margin-top: 36px; position: relative; display: grid; gap: 28px; padding-left: 28px; }
+.timeline::before { content: ''; position: absolute; left: 5px; top: 8px; bottom: 8px; width: 2px; background: var(--line-2); }
+.timeline li { position: relative; }
+.timeline li::before { content: ''; position: absolute; left: -28px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg-2); border: 2px solid var(--signal); }
+.timeline li:last-child::before { background: var(--signal); }
+.timeline h3 { font-size: 1.15rem; letter-spacing: -0.02em; }
+.timeline p { margin-top: 4px; color: var(--muted); }
+.stack h3 { font-size: 1.15rem; letter-spacing: -0.02em; margin-bottom: 12px; }
+.stack dl > div { display: flex; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 0.925rem; }
+.stack dt { color: var(--muted); }
+.stack dd { font-weight: 600; text-align: right; }
+.stack .hint { margin-top: 16px; }
+
+.team { display: grid; gap: 20px; }
+.member { display: grid; align-content: start; border-radius: var(--r-lg); overflow: hidden; background: var(--surface); border: 1px solid var(--line); }
+.member__img { aspect-ratio: 4 / 3; overflow: hidden; background: var(--bg-2); }
+.member__img img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.8s var(--ease); }
+.member:hover .member__img img { transform: scale(1.03); }
+.member__body { display: grid; gap: 12px; padding: 24px; align-content: start; }
+.member__body h3 { font-size: 1.35rem; letter-spacing: -0.025em; }
+.member__role { color: var(--signal); font-weight: 600; font-size: 0.9rem; margin-top: 2px; }
+.member__body > p { color: var(--muted); }
+@media (min-width: 900px) { .team { grid-template-columns: 1fr 1fr; } }
+
+.band { display: grid; gap: 24px; justify-items: start; padding: 40px 28px; border-radius: 28px; background: var(--night); color: var(--night-fg); }
+.band h2 { color: #fff; font-size: clamp(1.8rem, 3.6vw, 2.6rem); max-width: 20ch; }
+.band .btn-primary { background: #fff; color: #111214; }
+@media (min-width: 900px) { .band { grid-template-columns: 1fr auto; align-items: center; padding: 56px; } }
+.page-sec--last { padding-bottom: 96px; }
+
+/* Contact */
+.contact { padding-bottom: 96px; }
+.contact__grid { display: grid; gap: 40px; align-items: start; }
+@media (min-width: 1000px) { .contact__grid { grid-template-columns: 1.1fr 1fr; gap: 64px; } }
+.form-grid { display: grid; gap: 20px; }
+.form-2 { display: grid; gap: 20px; }
+@media (min-width: 600px) { .form-2 { grid-template-columns: 1fr 1fr; } }
+.topics { display: flex; flex-wrap: wrap; gap: 8px; }
+.topic { height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 0.875rem; font-weight: 500; color: var(--muted); transition: all 0.2s; }
+.topic:hover { color: var(--ink); border-color: var(--faint); }
+.topic.is-on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.contact__done { display: grid; gap: 12px; justify-items: start; padding: 24px 0; }
+.contact__done h2 { font-size: 1.6rem; }
+.contact__done .btn { margin-top: 8px; }
+.contact__done-icon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--ok-soft); color: var(--ok); }
+.contact__done-icon svg { width: 24px; height: 24px; }
+.contact__facts { display: grid; gap: 0; border-top: 1px solid var(--line-2); }
+.contact__facts > div { display: flex; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line-2); font-size: 0.95rem; }
+.contact__facts dt { color: var(--muted); }
+.contact__facts dd { font-weight: 600; text-align: right; }
+.contact__faq-title { font-size: 1.4rem; margin: 44px 0 8px; }
+.faq__item { border-bottom: 1px solid var(--line-2); }
+.faq__item button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; text-align: left; font-weight: 600; font-size: 1rem; color: var(--ink); }
+.faq__item button svg { flex: none; width: 18px; height: 18px; color: var(--muted); transition: transform 0.3s var(--ease); }
+.faq__item.is-open button svg { transform: rotate(180deg); color: var(--ink); }
+.faq__item p { padding: 0 0 20px; color: var(--muted); max-width: 60ch; }
+
+/* 404 */
+.notfound { min-height: calc(100dvh - var(--nav-h) - 200px); display: grid; align-content: center; gap: 16px; padding-top: 64px; padding-bottom: 96px; }
+.notfound h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); max-width: 16ch; letter-spacing: -0.04em; }
+.notfound__btns { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }

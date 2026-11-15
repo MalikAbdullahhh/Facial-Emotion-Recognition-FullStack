@@ -1,62 +1,38 @@
 import React from 'react';
 
 class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  state = { error: null };
 
   static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+    return { error };
   }
 
-  componentDidCatch(error, errorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
+  componentDidCatch(error) {
+    // A new deploy replaces old code-split chunks; reload once to pick up the new build.
+    if (/Loading chunk|ChunkLoadError|dynamically imported module/i.test(String(error?.message || error?.name))) {
+      if (!sessionStorage.getItem('fer-chunk-reload')) {
+        sessionStorage.setItem('fer-chunk-reload', '1');
+        window.location.reload();
+      }
+    }
+    console.error(error);
   }
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '2rem',
-          textAlign: 'center',
-          background: 'var(--bg-primary, #ffffff)',
-          color: 'var(--text-primary, #000000)'
-        }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Something went wrong</h1>
-          <p style={{ marginBottom: '2rem', color: 'var(--text-secondary, #666666)' }}>
-            {this.state.error?.message || 'An unexpected error occurred'}
-          </p>
-          <button
-            onClick={() => {
-              this.setState({ hasError: false, error: null });
-              window.location.reload();
-            }}
-            style={{
-              padding: '1rem 2rem',
-              background: 'var(--accent, #000000)',
-              color: 'var(--bg-primary, #ffffff)',
-              border: 'none',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              fontWeight: '600'
-            }}
-          >
-            Reload Page
-          </button>
+    if (!this.state.error) return this.props.children;
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, textAlign: 'center' }}>
+        <div style={{ maxWidth: 420, display: 'grid', gap: 14, justifyItems: 'center' }}>
+          <h1 style={{ fontSize: '1.75rem' }}>Something broke on this page</h1>
+          <p className="muted">Reloading usually fixes it. If it keeps happening, let us know from the contact page.</p>
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <button type="button" className="btn btn-primary" onClick={() => window.location.reload()}>Reload</button>
+            <a className="btn btn-outline" href="/">Go home</a>
+          </div>
         </div>
-      );
-    }
-
-    return this.props.children;
+      </div>
+    );
   }
 }
 
 export default ErrorBoundary;
-
